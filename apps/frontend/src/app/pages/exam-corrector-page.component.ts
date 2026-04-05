@@ -4,6 +4,9 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../services/api.service';
 
+const POLL_TIMEOUT_MS = 5 * 60 * 1000;
+const POLL_INTERVAL_MS = 1500;
+
 type SavedTemplate = { id: string; name: string };
 
 @Component({
@@ -39,6 +42,9 @@ type SavedTemplate = { id: string; name: string };
       </form>
 
       <p class="status">{{ status }}</p>
+      <div class="progress-track" *ngIf="loading">
+        <div class="progress-fill" [style.width.%]="progressValue"></div>
+      </div>
 
       <section *ngIf="result" class="panel">
         <h2>{{ result.total_puntos }}/{{ result.max_puntos }}</h2>
@@ -75,6 +81,8 @@ type SavedTemplate = { id: string; name: string };
     button { cursor: pointer; }
     .check { display: flex; align-items: center; gap: 8px; }
     .status { min-height: 20px; color: #9a9a9a; }
+    .progress-track { height: 4px; background: #222; margin-top: 4px; }
+    .progress-fill { height: 100%; background: #5a9; transition: width 0.4s ease; }
     .warn { color: #ff9e9e; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border-bottom: 1px solid #333; text-align: left; padding: 8px; font-size: 13px; }
@@ -89,6 +97,7 @@ export class ExamCorrectorPageComponent implements OnInit {
   examFile: File | null = null;
   loading = false;
   status = '';
+  progressValue = 0;
   result: any = null;
 
   constructor(private api: ApiService) {}
@@ -109,13 +118,11 @@ export class ExamCorrectorPageComponent implements OnInit {
   }
 
   onTemplateFile(ev: Event) {
-    const target = ev.target as HTMLInputElement;
-    this.templateFile = target.files?.[0] || null;
+    this.templateFile = (ev.target as HTMLInputElement).files?.[0] || null;
   }
 
   onExamFile(ev: Event) {
-    const target = ev.target as HTMLInputElement;
-    this.examFile = target.files?.[0] || null;
+    this.examFile = (ev.target as HTMLInputElement).files?.[0] || null;
   }
 
   async onSubmit(ev: Event) {
@@ -131,6 +138,7 @@ export class ExamCorrectorPageComponent implements OnInit {
 
     this.loading = true;
     this.result = null;
+    this.progressValue = 0;
     this.status = 'Subiendo archivos...';
 
     const fd = new FormData();
@@ -155,7 +163,13 @@ export class ExamCorrectorPageComponent implements OnInit {
   }
 
   async pollJob(jobId: string) {
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
     while (true) {
+      if (Date.now() > deadline) {
+        this.status = 'La corrección tardó demasiado. Por favor inténtalo de nuevo.';
+        this.loading = false;
+        return;
+      }
       const status = await this.api.getStatus(jobId);
       if (!status.ok && status.error) {
         throw new Error(status.error);
@@ -166,6 +180,7 @@ export class ExamCorrectorPageComponent implements OnInit {
           throw new Error(res.error || 'No se pudo obtener el resultado.');
         }
         this.result = res.result;
+        this.progressValue = 100;
         this.status = 'Corrección completada.';
         this.loading = false;
         await this.reloadTemplates();
@@ -174,8 +189,9 @@ export class ExamCorrectorPageComponent implements OnInit {
       if (status.status === 'error') {
         throw new Error(status.error || 'Error en procesamiento.');
       }
-      this.status = `${status.progress || 0}% · ${status.message || 'Procesando...'}`;
-      await new Promise((r) => setTimeout(r, 1500));
+      this.progressValue = status.progress ?? 0;
+      this.status = `${this.progressValue}% · ${status.message || 'Procesando...'}`;
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     }
   }
 

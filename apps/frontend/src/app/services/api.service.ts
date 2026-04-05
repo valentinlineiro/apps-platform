@@ -1,11 +1,11 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private readonly baseUrl =
-    (window as any).__BACKEND_URL__ || 'http://localhost:8000';
+  private readonly baseUrl = environment.backendUrl;
 
   constructor(private http: HttpClient) {}
 
