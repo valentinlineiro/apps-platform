@@ -1,0 +1,13 @@
+services:
+  exam-corrector:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    volumes:
+      - exam_uploads:/app/uploads
+    restart: unless-stopped
+
+volumes:
+  exam_uploads:
