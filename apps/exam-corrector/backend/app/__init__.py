@@ -25,10 +25,11 @@ def create_app() -> Flask:
 
     template_service.cargar_template_cache()
 
-    from app.routes import correction, legacy, templates, rules
+    from app.routes import correction, legacy, templates, rules, manifest
     app.register_blueprint(correction.bp)
     app.register_blueprint(legacy.bp)
     app.register_blueprint(templates.bp)
     app.register_blueprint(rules.bp)
+    app.register_blueprint(manifest.bp)
 
     return app

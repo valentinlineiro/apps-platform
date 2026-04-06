@@ -30,10 +30,17 @@ apps/
 
 ### App registration
 
-Adding a new app requires three steps:
-1. Add the app ID to `apps/portal/public/apps/registry.json`
-2. Create `apps/portal/public/apps/<id>/manifest.json` (see existing ones for schema)
-3. Add a lazy route to `apps/portal/src/app/app.routes.ts`
+Adding a new app requires:
+1. Add the app ID to `APPS` env var in `docker-compose.yml` (portal service)
+2. Add a lazy route to `apps/portal/src/app/app.routes.ts`
+3. If the app has a backend:
+   - Add a `GET /apps/<id>/manifest.json` endpoint to its backend
+   - Add a `location /apps/<id>/` proxy block to `apps/portal/nginx.conf`
+   - Add an entry to `apps/portal/proxy.conf.json` (dev proxy)
+4. If the app has no backend: create `apps/portal/public/apps/<id>/manifest.json` (static)
+
+At Docker startup, `entrypoint.sh` generates `registry.json` from the `APPS` env var.
+For local `ng serve`, `apps/portal/public/apps/registry.json` is used as a static fallback.
 
 The portal's `AppRegistryService` fetches `registry.json` + each manifest at runtime to build the directory page automatically.
 

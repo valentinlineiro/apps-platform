@@ -5,6 +5,8 @@ services:
       dockerfile: apps/portal/Dockerfile
     ports:
       - "4200:80"
+    environment:
+      - APPS=exam-corrector,attendance-checker
     depends_on:
       - exam-corrector-backend
     restart: unless-stopped
