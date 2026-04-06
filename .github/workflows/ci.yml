@@ -54,8 +54,14 @@ jobs:
           submodules: false
 
       - name: Configure submodule auth (optional)
-        if: ${{ secrets.SUBMODULES_PAT != '' }}
-        run: git config --global url."https://x-access-token:${{ secrets.SUBMODULES_PAT }}@github.com/".insteadOf "https://github.com/"
+        env:
+          SUBMODULES_PAT: ${{ secrets.SUBMODULES_PAT }}
+        run: |
+          if [ -n "$SUBMODULES_PAT" ]; then
+            git config --global url."https://x-access-token:${SUBMODULES_PAT}@github.com/".insteadOf "https://github.com/"
+          else
+            echo "SUBMODULES_PAT not set; using default GitHub auth"
+          fi
 
       - name: Init portal submodule only
         run: |
@@ -100,8 +106,14 @@ jobs:
           submodules: false
 
       - name: Configure submodule auth (optional)
-        if: ${{ secrets.SUBMODULES_PAT != '' }}
-        run: git config --global url."https://x-access-token:${{ secrets.SUBMODULES_PAT }}@github.com/".insteadOf "https://github.com/"
+        env:
+          SUBMODULES_PAT: ${{ secrets.SUBMODULES_PAT }}
+        run: |
+          if [ -n "$SUBMODULES_PAT" ]; then
+            git config --global url."https://x-access-token:${SUBMODULES_PAT}@github.com/".insteadOf "https://github.com/"
+          else
+            echo "SUBMODULES_PAT not set; using default GitHub auth"
+          fi
 
       - name: Init exam-corrector submodule only
         run: |
@@ -142,8 +154,14 @@ jobs:
           submodules: false
 
       - name: Configure submodule auth (optional)
-        if: ${{ secrets.SUBMODULES_PAT != '' }}
-        run: git config --global url."https://x-access-token:${{ secrets.SUBMODULES_PAT }}@github.com/".insteadOf "https://github.com/"
+        env:
+          SUBMODULES_PAT: ${{ secrets.SUBMODULES_PAT }}
+        run: |
+          if [ -n "$SUBMODULES_PAT" ]; then
+            git config --global url."https://x-access-token:${SUBMODULES_PAT}@github.com/".insteadOf "https://github.com/"
+          else
+            echo "SUBMODULES_PAT not set; using default GitHub auth"
+          fi
 
       - name: Init portal submodule only
         run: |
