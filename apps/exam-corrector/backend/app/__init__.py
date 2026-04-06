@@ -32,4 +32,7 @@ def create_app() -> Flask:
     app.register_blueprint(rules.bp)
     app.register_blueprint(manifest.bp)
 
+    from app.services import registration_service
+    registration_service.start()
+
     return app

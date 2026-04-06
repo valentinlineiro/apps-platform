@@ -1,0 +1,7 @@
+{
+  "name": "exam-corrector-element",
+  "private": true,
+  "dependencies": {
+    "@angular/elements": "^21.0.0"
+  }
+}

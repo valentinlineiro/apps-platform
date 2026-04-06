@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, inject, resource, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { ExamCorrectorApiService } from './services/exam-corrector-api.service';
 
 const POLL_TIMEOUT_MS = 5 * 60 * 1000;
@@ -9,11 +8,11 @@ const POLL_INTERVAL_MS = 1500;
 @Component({
   selector: 'app-exam-corrector-page',
   standalone: true,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="layout">
-      <a class="back" routerLink="/">← apps</a>
+      <a class="back" (click)="navigateBack($event)">← apps</a>
       <h1>exam-corrector</h1>
 
       <form (submit)="onSubmit($event)" class="panel">
@@ -102,6 +101,13 @@ const POLL_INTERVAL_MS = 1500;
 })
 export class ExamCorrectorPageComponent {
   private api = inject(ExamCorrectorApiService);
+
+  navigateBack(e: Event) {
+    e.preventDefault();
+    (e.currentTarget as Element).dispatchEvent(
+      new CustomEvent('app-navigate', { detail: '/', bubbles: true, composed: true })
+    );
+  }
 
   selectedTemplateId = signal('__upload__');
   templateName = signal('');
