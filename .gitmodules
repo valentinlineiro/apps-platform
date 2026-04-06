@@ -1,9 +1,9 @@
 [submodule "apps/portal"]
 	path = apps/portal
-	url = ../portal
+	url = https://github.com/valentinlineiro/portal.git
 [submodule "apps/exam-corrector"]
 	path = apps/exam-corrector
-	url = ../exam-corrector
+	url = https://github.com/valentinlineiro/exam-corrector.git
 [submodule "apps/attendance-checker"]
 	path = apps/attendance-checker
-	url = ../attendance-checker
+	url = https://github.com/valentinlineiro/attendance-checker.git
