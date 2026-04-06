@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      portal: ${{ steps.filter.outputs.portal }}
+      exam_corrector: ${{ steps.filter.outputs.exam_corrector }}
+      platform: ${{ steps.filter.outputs.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Filter Paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            portal:
+              - 'apps/portal/**'
+            exam_corrector:
+              - 'apps/exam-corrector/**'
+            platform:
+              - 'docker-compose.yml'
+              - 'scaffold-app.sh'
+              - 'README.md'
+              - 'PARENT_REPO.md'
+              - '.gitmodules'
+              - '.github/workflows/**'
+
+  portal-checks:
+    name: Portal Checks
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.portal == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+        working-directory: apps/portal/backend
+
+      - name: Run portal backend tests
+        run: python -m unittest discover -s backend/tests -v
+        working-directory: apps/portal
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: apps/portal
+
+      - name: Build portal frontend
+        run: npm run build
+        working-directory: apps/portal
+
+  exam-corrector-checks:
+    name: Exam Corrector Checks
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.exam_corrector == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Backend syntax smoke check
+        run: python -m compileall backend
+        working-directory: apps/exam-corrector
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: apps/exam-corrector
+
+      - name: Build exam-corrector frontend
+        run: npm run build
+        working-directory: apps/exam-corrector
+
+  platform-smoke:
+    name: Platform Smoke
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.platform == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Validate compose config
+        run: docker compose config
+
+      - name: Build core platform images
+        run: docker compose build portal portal-backend
