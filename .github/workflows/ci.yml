@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          submodules: recursive
+          submodules: false
 
       - name: Filter Paths
         id: filter
@@ -51,7 +51,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Configure submodule auth (optional)
+        if: ${{ secrets.SUBMODULES_PAT != '' }}
+        run: git config --global url."https://x-access-token:${{ secrets.SUBMODULES_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Init portal submodule only
+        run: |
+          git submodule sync -- apps/portal
+          git -c protocol.version=2 submodule update --init --force --depth 1 apps/portal
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -88,7 +97,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Configure submodule auth (optional)
+        if: ${{ secrets.SUBMODULES_PAT != '' }}
+        run: git config --global url."https://x-access-token:${{ secrets.SUBMODULES_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Init exam-corrector submodule only
+        run: |
+          git submodule sync -- apps/exam-corrector
+          git -c protocol.version=2 submodule update --init --force --depth 1 apps/exam-corrector
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -121,7 +139,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Configure submodule auth (optional)
+        if: ${{ secrets.SUBMODULES_PAT != '' }}
+        run: git config --global url."https://x-access-token:${{ secrets.SUBMODULES_PAT }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Init portal submodule only
+        run: |
+          git submodule sync -- apps/portal
+          git -c protocol.version=2 submodule update --init --force --depth 1 apps/portal
 
       - name: Validate compose config
         run: docker compose config
