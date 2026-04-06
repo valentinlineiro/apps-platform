@@ -1,0 +1,9 @@
+[submodule "apps/portal"]
+	path = apps/portal
+	url = ../portal
+[submodule "apps/exam-corrector"]
+	path = apps/exam-corrector
+	url = ../exam-corrector
+[submodule "apps/attendance-checker"]
+	path = apps/attendance-checker
+	url = ../attendance-checker

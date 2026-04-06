@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Transition helper for the parent repo: scaffolds a new app under apps/<app-id>.
 # Usage: ./scaffold-app.sh <app-id> "<App Name>" "<Description>" [icon]
 # Example: ./scaffold-app.sh attendance-checker "Attendance Checker" "Track student attendance" "📋"
 set -euo pipefail

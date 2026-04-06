@@ -1,9 +1,0 @@
-{
-  "extends": "../tsconfig.json",
-  "compilerOptions": {
-    "outDir": "./out-tsc/element",
-    "types": []
-  },
-  "files": ["src/main.element.ts"],
-  "include": ["src/**/*.d.ts"]
-}

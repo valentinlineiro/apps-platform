@@ -1,3 +1,5 @@
+# Parent orchestration compose for the platform while apps are being split
+# into separate repositories.
 services:
   portal:
     build:
