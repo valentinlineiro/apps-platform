@@ -4,6 +4,8 @@ import hashlib
 import cv2
 import numpy as np
 
+GEMINI_JPEG_QUALITY = 75  # Gemini doesn't need high fidelity; 75 cuts payload ~35%
+
 
 def recorte_a4(imagen):
     """Detects and perspective-corrects the exam sheet in the photo."""
@@ -50,23 +52,19 @@ def recorte_a4(imagen):
     return redimensionada
 
 
-def a_data_uri(imagen_bgr) -> str:
-    ok, buf = cv2.imencode(".jpg", imagen_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
-    if not ok:
-        return ""
-    b64 = base64.b64encode(buf.tobytes()).decode("utf-8")
-    return f"data:image/jpeg;base64,{b64}"
-
-
-def imagen_bgr_a_b64(imagen_bgr) -> str:
-    ok, buf = cv2.imencode(".jpg", imagen_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+def encode_for_gemini(imagen_bgr) -> tuple[str, str]:
+    """Single JPEG encode → returns (base64_string, sha256_hash).
+    Avoids encoding the same image twice for hashing and API upload."""
+    ok, buf = cv2.imencode(".jpg", imagen_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), GEMINI_JPEG_QUALITY])
     if not ok:
         raise ValueError("No se pudo codificar la imagen")
-    return base64.b64encode(buf.tobytes()).decode("utf-8")
+    data = buf.tobytes()
+    return base64.b64encode(data).decode("utf-8"), hashlib.sha256(data).hexdigest()
 
 
-def hash_template_image(imagen_bgr) -> str:
-    ok, buf = cv2.imencode(".jpg", imagen_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-    if not ok:
-        raise ValueError("No se pudo generar hash de plantilla.")
-    return hashlib.sha256(buf.tobytes()).hexdigest()
+def load_and_crop(path: str):
+    """Read image from disk and perspective-correct in one call."""
+    img = cv2.imread(path)
+    if img is None:
+        raise ValueError(f"No se pudo leer la imagen: {path}")
+    return recorte_a4(img)

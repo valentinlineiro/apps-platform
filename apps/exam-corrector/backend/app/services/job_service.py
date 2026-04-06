@@ -5,12 +5,13 @@ import time
 import uuid
 from typing import Optional
 
-import cv2
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 
 from app import config
 from app.models.job import Job
-from app.services.image_service import recorte_a4, a_data_uri, imagen_bgr_a_b64
+from app.services.image_service import load_and_crop, encode_for_gemini
 from app.services.gemini_service import obtener_modelo_plantilla, llamar_gemini, PROMPT_CORRECCION_DESDE_MODELO
 from app.services.scoring_service import (
     cargar_reglas_evaluacion, aplicar_reglas_puntuacion,
@@ -51,7 +52,7 @@ def cleanup_old_uploads() -> None:
     get_store().delete_finished_before(cutoff)
 
 
-def _resultado_error(msg: str, debug_plantilla: str = "", debug_examen: str = "") -> dict:
+def _resultado_error(msg: str) -> dict:
     default_scoring = reglas_por_defecto().get("test", {"correcta": 1.0, "incorrecta": 0.0, "en_blanco": 0.0})
     return {
         "puntaje": 0,
@@ -65,8 +66,6 @@ def _resultado_error(msg: str, debug_plantilla: str = "", debug_examen: str = ""
         "scoring_resumen": {"correctas": 0, "incorrectas": 0, "en_blanco": 0},
         "total_puntos": 0,
         "max_puntos": 0,
-        "debug_plantilla": debug_plantilla,
-        "debug_examen": debug_examen,
     }
 
 
@@ -82,29 +81,29 @@ def actualizar_progreso(job_id: str, progress: int, stage: str, message: str) ->
 
 def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None) -> dict:
     if progress_cb:
-        progress_cb(8, "loading", "Leyendo imágenes...")
-    img_plantilla = cv2.imread(ruta_plantilla)
-    img_examen = cv2.imread(ruta_examen)
-    if img_plantilla is None or img_examen is None:
-        return _resultado_error("No se pudieron leer una o ambas imágenes.")
-
-    if progress_cb:
-        progress_cb(20, "preprocess", "Preparando hojas...")
-    plantilla_a4 = recorte_a4(img_plantilla)
-    examen_a4 = recorte_a4(img_examen)
-    debug_plantilla = a_data_uri(plantilla_a4)
-    debug_examen = a_data_uri(examen_a4)
+        progress_cb(8, "loading", "Leyendo y preparando imágenes en paralelo...")
+    try:
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_p = ex.submit(load_and_crop, ruta_plantilla)
+            fut_e = ex.submit(load_and_crop, ruta_examen)
+            plantilla_a4 = fut_p.result()
+            examen_a4 = fut_e.result()
+    except ValueError as e:
+        return _resultado_error(str(e))
 
     try:
         if progress_cb:
             progress_cb(28, "encode", "Codificando imágenes...")
-        b64_p = imagen_bgr_a_b64(plantilla_a4)
-        b64_e = imagen_bgr_a_b64(examen_a4)
-        modelo_plantilla = obtener_modelo_plantilla(plantilla_a4, b64_p, progress_cb=progress_cb)
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            fut_bp = ex.submit(encode_for_gemini, plantilla_a4)
+            fut_be = ex.submit(encode_for_gemini, examen_a4)
+            b64_p, template_hash = fut_bp.result()
+            b64_e, _ = fut_be.result()
+        modelo_plantilla = obtener_modelo_plantilla(b64_p, template_hash, progress_cb=progress_cb)
     except requests.HTTPError as e:
-        return _resultado_error(f"Error en la API de Gemini: {e}", debug_plantilla, debug_examen)
+        return _resultado_error(f"Error en la API de Gemini: {e}")
     except (ValueError, KeyError) as e:
-        return _resultado_error(f"No se pudo parsear la respuesta de Gemini: {e}", debug_plantilla, debug_examen)
+        return _resultado_error(f"No se pudo parsear la respuesta de Gemini: {e}")
 
     try:
         if progress_cb:
@@ -119,9 +118,9 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
             timeout=90,
         )
     except requests.HTTPError as e:
-        return _resultado_error(f"Error en la API de Gemini: {e}", debug_plantilla, debug_examen)
+        return _resultado_error(f"Error en la API de Gemini: {e}")
     except (ValueError, KeyError) as e:
-        return _resultado_error(f"No se pudo parsear la respuesta de Gemini: {e}", debug_plantilla, debug_examen)
+        return _resultado_error(f"No se pudo parsear la respuesta de Gemini: {e}")
 
     if not bool(result.get("compatible", False)):
         motivo = result.get("motivo", "La plantilla no coincide con el examen.")
@@ -129,11 +128,7 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
             conf = float(result.get("confianza", 0.0))
         except (TypeError, ValueError):
             conf = 0.0
-        return _resultado_error(
-            f"Plantilla incompatible (confianza {conf:.2f}). {motivo}",
-            debug_plantilla,
-            debug_examen,
-        )
+        return _resultado_error(f"Plantilla incompatible (confianza {conf:.2f}). {motivo}")
 
     respuestas = result.get("respuestas", [])
     if progress_cb:
@@ -181,8 +176,6 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
         "scoring_resumen": scoring["resumen"],
         "total_puntos": scoring["total_puntos"],
         "max_puntos": scoring["max_puntos"],
-        "debug_plantilla": debug_plantilla,
-        "debug_examen": debug_examen,
     }
 
 

@@ -4,7 +4,7 @@ import re
 import requests
 
 from app import config
-from app.services.image_service import hash_template_image
+from app.services.image_service import encode_for_gemini
 from app.services import template_service
 
 PROMPT_TEMPLATE_MODEL = """
@@ -97,8 +97,7 @@ def llamar_gemini(parts: list, prompt: str, timeout: int = 90) -> dict:
     return parsear_json_de_texto(texto)
 
 
-def obtener_modelo_plantilla(plantilla_a4, b64_p: str, progress_cb=None) -> dict:
-    template_hash = hash_template_image(plantilla_a4)
+def obtener_modelo_plantilla(b64_p: str, template_hash: str, progress_cb=None) -> dict:
     with template_service.TEMPLATE_CACHE_LOCK:
         cached = template_service.TEMPLATE_CACHE.get(template_hash)
     if cached:
