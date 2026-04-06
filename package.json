@@ -1,4 +1,4 @@
 {
   "private": true,
-  "workspaces": ["apps/portal", "apps/exam-corrector/frontend"]
+  "workspaces": ["apps/portal"]
 }

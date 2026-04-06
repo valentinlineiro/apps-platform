@@ -19,8 +19,8 @@ services:
 
   exam-corrector-backend:
     build:
-      context: .
-      dockerfile: apps/exam-corrector/backend/Dockerfile
+      context: apps/exam-corrector
+      dockerfile: backend/Dockerfile
     expose:
       - "8000"
     environment:
