@@ -40,6 +40,28 @@ docker compose up --build
 - Portal frontend: `http://localhost:4200`
 - Portal backend: `http://localhost:5000` (interno por compose)
 - Exam-corrector backend: `http://localhost:8000` (interno por compose)
+- Keycloak: `http://localhost:8081` (`admin` / `admin` por defecto)
+
+## Login OIDC local (Keycloak)
+
+El `docker-compose.yml` ya configura el portal backend para usar Keycloak en local
+e importa el realm desde:
+
+- `apps/portal/backend/keycloak/apps-platform-realm.json`
+
+Credenciales demo importadas:
+
+- Usuario: `demo`
+- Password: `demo123`
+
+Variables opcionales para sobreescribir defaults:
+
+```bash
+export PORTAL_SESSION_SECRET="cambia-esto"
+export OAUTH_CLIENT_ID="portal"
+export OAUTH_CLIENT_SECRET="portal-dev-secret"
+export OAUTH_REDIRECT_URI="http://localhost:4200/auth/callback"
+```
 
 ## Estructura
 

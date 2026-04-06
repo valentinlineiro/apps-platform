@@ -17,6 +17,20 @@ services:
     build: ./apps/portal/backend
     expose:
       - "5000"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    environment:
+      - PORTAL_SESSION_SECRET=${PORTAL_SESSION_SECRET:-dev-portal-session-secret}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
+      - OAUTH_PROVIDER=keycloak
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-portal}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:-portal-dev-secret}
+      - OAUTH_SCOPE=openid profile email
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:4200/auth/callback}
+      - OAUTH_AUTHORIZE_URL=${OAUTH_AUTHORIZE_URL:-http://localhost:8081/realms/apps-platform/protocol/openid-connect/auth}
+      - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/token}
+      - OAUTH_USERINFO_URL=${OAUTH_USERINFO_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/userinfo}
     restart: unless-stopped
 
   exam-corrector-backend:
@@ -46,6 +60,28 @@ services:
   #   depends_on:
   #     - portal-backend
   #   restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.2
+    command: ["start-dev", "--import-realm"]
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      - KC_HEALTH_ENABLED=true
+      - KC_HOSTNAME=http://localhost:8081
+      - KC_HOSTNAME_STRICT=false
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./apps/portal/backend/keycloak:/opt/keycloak/data/import:ro
+      - ./apps/portal/backend/keycloak/themes:/opt/keycloak/themes:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /realms/apps-platform HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
 
 volumes:
   exam_corrector_uploads:
