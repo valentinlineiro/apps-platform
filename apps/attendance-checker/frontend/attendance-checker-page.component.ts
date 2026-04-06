@@ -2,7 +2,7 @@ import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 @Component({
-  selector: 'app-placeholder-page',
+  selector: 'app-attendance-checker-page',
   standalone: true,
   imports: [RouterLink],
   template: `
@@ -22,4 +22,4 @@ import { RouterLink } from '@angular/router';
     .panel { border: 1px solid #222; background: #141414; padding: 16px; margin-top: 16px; }
   `]
 })
-export class PlaceholderAppPageComponent {}
+export class AttendanceCheckerPageComponent {}

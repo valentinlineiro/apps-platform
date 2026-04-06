@@ -1,18 +1,15 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
-export class ApiService {
-  private readonly baseUrl = environment.backendUrl;
-
-  constructor(private http: HttpClient) {}
+export class ExamCorrectorApiService {
+  private http = inject(HttpClient);
 
   listTemplates() {
     return firstValueFrom(
       this.http.get<{ ok: boolean; templates: Array<{ id: string; name: string }> }>(
-        `${this.baseUrl}/exam-corrector/api/templates`
+        '/exam-corrector/api/templates'
       )
     );
   }
@@ -20,7 +17,7 @@ export class ApiService {
   startCorrection(formData: FormData) {
     return firstValueFrom(
       this.http.post<{ ok: boolean; job_id: string; error?: string }>(
-        `${this.baseUrl}/exam-corrector/start`,
+        '/exam-corrector/start',
         formData
       )
     );
@@ -34,14 +31,14 @@ export class ApiService {
         progress?: number;
         message?: string;
         error?: string;
-      }>(`${this.baseUrl}/exam-corrector/status/${jobId}`)
+      }>(`/exam-corrector/status/${jobId}`)
     );
   }
 
   getResult(jobId: string) {
     return firstValueFrom(
       this.http.get<{ ok: boolean; status: string; result?: any; error?: string }>(
-        `${this.baseUrl}/exam-corrector/api/result/${jobId}`
+        `/exam-corrector/api/result/${jobId}`
       )
     );
   }

@@ -11,55 +11,73 @@ export GEMINI_API_KEY="your_api_key"
 docker compose up --build
 ```
 
-- Frontend Angular PWA: `http://localhost:4200`
-- Backend API: `http://localhost:8000`
+- Portal (Angular PWA): `http://localhost:4200`
+- exam-corrector backend: internal only (proxied via nginx)
 
 ## Architecture
 
-Two independent apps under `apps/`:
+Multi-app monorepo. Each app lives under `apps/<id>/`.
 
-### Backend (`apps/backend/`)
-Flask + Gemini Vision API. Single file: `main.py`.
+```
+apps/
+  portal/                     # Angular 21 PWA shell — directory + routing only
+  exam-corrector/
+    backend/                  # Flask + Gemini Vision API
+    frontend/                 # Angular components for this app
+  attendance-checker/
+    frontend/                 # Angular components (no backend yet)
+```
 
-**Key flows:**
-- **Async correction** (used by Angular frontend): `POST /exam-corrector/start` → returns `job_id` → poll `GET /exam-corrector/status/<job_id>` → fetch `GET /exam-corrector/api/result/<job_id>`
-- **Sync correction** (legacy, used by HTML templates): `POST /exam-corrector/corregir` → renders `resultado.html`
-- **Template library**: saved exam templates stored in `uploads/templates/`, indexed in `uploads/saved_templates.json`
-- **Template cache**: Gemini analysis of answer keys cached by SHA-256 image hash in `uploads/template_cache.json` to avoid redundant API calls
-- **Scoring rules**: configurable via `uploads/scoring_rules.json`, editable at `/exam-corrector/rules`
+### App registration
 
-**Correction pipeline** (`procesar_correccion`):
-1. Load images → `recorte_a4()` detects and perspective-corrects the exam sheet via OpenCV
-2. Send answer key image to Gemini → extract structured template model (cached)
-3. Send student exam image + template model to Gemini → get per-question results
-4. Apply scoring rules → return result dict
+Adding a new app requires three steps:
+1. Add the app ID to `apps/portal/public/apps/registry.json`
+2. Create `apps/portal/public/apps/<id>/manifest.json` (see existing ones for schema)
+3. Add a lazy route to `apps/portal/src/app/app.routes.ts`
 
-**Jobs** run in daemon threads, tracked in the in-memory `JOBS` dict (lost on restart).
+The portal's `AppRegistryService` fetches `registry.json` + each manifest at runtime to build the directory page automatically.
 
-### Frontend (`apps/frontend/`)
-Angular 18 PWA (standalone components, no NgModules). No test suite configured.
+### Portal (`apps/portal/`)
+Angular 21 PWA (standalone components, signals, zoneless change detection).
 
 **Key files:**
-- `src/app/app.routes.ts` — routing: `/` → `DirectoryPageComponent`, `/exam-corrector` → `ExamCorrectorPageComponent`
-- `src/app/services/api.service.ts` — all HTTP calls to backend; backend URL resolved from `window.__BACKEND_URL__` or defaults to `http://localhost:8000`
-- `src/app/pages/exam-corrector-page.component.ts` — main UI with template selection, file upload, async polling loop
+- `src/app/app.routes.ts` — lazy routes; one `loadComponent` entry per app
+- `src/app/services/app-registry.service.ts` — fetches manifests, drives the directory
+- `src/app/pages/directory-page.component.ts` — renders app cards from registry
+- `public/apps/` — `registry.json` + per-app `manifest.json` files (served as static assets)
+- `nginx.conf` — one `upstream` + `location` block per app with a backend
+- `proxy.conf.json` — dev proxy; maps `/exam-corrector/` → `http://localhost:8000`
 
-**Frontend dev (without Docker):**
+**Portal dev (without Docker):**
 ```bash
-cd apps/frontend
+# From repo root (installs into root node_modules/ — required for cross-app imports)
 npm install
-npm start   # serves on :4200
+cd apps/portal && npm start   # serves on :4200, proxies backend routes
 ```
 
-**Frontend build:**
-```bash
-cd apps/frontend
-npm run build   # output in dist/
-```
+### exam-corrector backend (`apps/exam-corrector/backend/`)
+Flask + Gemini Vision API.
 
-The Nginx container (`apps/frontend/Dockerfile` + `nginx.conf`) serves the Angular build and proxies `/index.html` for all routes (SPA routing).
+**Key flows:**
+- **Async correction**: `POST /exam-corrector/start` → `job_id` → poll `GET /exam-corrector/status/<job_id>` → `GET /exam-corrector/api/result/<job_id>`
+- **Sync correction** (legacy HTML): `POST /exam-corrector/corregir` → renders `resultado.html`
+- **Template library**: stored in `uploads/templates/`, indexed in `uploads/saved_templates.json`
+- **Template cache**: Gemini analysis cached by SHA-256 in `uploads/template_cache.json`
+- **Scoring rules**: `uploads/scoring_rules.json`, editable at `/exam-corrector/rules`
+
+**Correction pipeline** (`procesar_correccion`):
+1. `recorte_a4()` — OpenCV perspective-corrects the exam sheet
+2. Gemini analyzes answer key → structured template model (cached)
+3. Gemini analyzes student exam + template → per-question results
+4. Apply scoring rules → return result dict
+
+Jobs run in daemon threads, tracked in the in-memory `JOBS` dict (lost on restart).
+
+### exam-corrector frontend (`apps/exam-corrector/frontend/`)
+- `exam-corrector-page.component.ts` — main UI: template selection, file upload, async polling
+- `services/exam-corrector-api.service.ts` — HTTP calls; uses same-origin paths (nginx proxies in prod, proxy.conf.json in dev)
 
 ## Environment
 
-- `GEMINI_API_KEY` — required by backend; model hardcoded to `gemini-2.5-flash`
-- Backend uploads (template images, cache) are persisted via the `backend_uploads` Docker volume
+- `GEMINI_API_KEY` — required by exam-corrector backend; model hardcoded to `gemini-2.5-flash`
+- Backend uploads persisted via `exam_corrector_uploads` Docker volume

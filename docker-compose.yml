@@ -1,22 +1,30 @@
 services:
-  backend:
-    build: ./apps/backend
+  portal:
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
+    ports:
+      - "4200:80"
+    depends_on:
+      - exam-corrector-backend
+    restart: unless-stopped
+
+  exam-corrector-backend:
+    build: ./apps/exam-corrector/backend
     expose:
       - "8000"
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ALLOWED_ORIGINS=http://localhost:4200
     volumes:
-      - backend_uploads:/app/uploads
+      - exam_corrector_uploads:/app/uploads
     restart: unless-stopped
 
-  frontend:
-    build: ./apps/frontend
-    ports:
-      - "4200:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
+  # attendance-checker-backend:   # uncomment when backend is added
+  #   build: ./apps/attendance-checker/backend
+  #   expose:
+  #     - "8000"
+  #   restart: unless-stopped
 
 volumes:
-  backend_uploads:
+  exam_corrector_uploads:
