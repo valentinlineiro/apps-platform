@@ -271,6 +271,7 @@ ELEMENT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "static", "ele
 @bp.get("/apps/${APP_ID}/manifest.json")
 def manifest():
     return jsonify({
+        "manifestVersion": 1,
         "id": "${APP_ID}",
         "name": "${APP_NAME}",
         "description": "${APP_DESC}",
@@ -300,6 +301,7 @@ HEARTBEAT_INTERVAL = 30
 RETRY_INTERVAL = 5
 
 MANIFEST = {
+    "manifestVersion": 1,
     "id": "${APP_ID}",
     "name": "${APP_NAME}",
     "description": "${APP_DESC}",
