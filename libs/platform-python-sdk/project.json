@@ -1,0 +1,14 @@
+{
+  "name": "platform-python-sdk",
+  "\$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "libs/platform-python-sdk",
+  "targets": {
+    "test": {
+      "command": "python -m pytest",
+      "options": {
+        "cwd": "libs/platform-python-sdk"
+      }
+    }
+  }
+}

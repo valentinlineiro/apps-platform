@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build-meta"
+
+[project]
+name = "platform-sdk"
+version = "0.1.0"
+dependencies = [
+    "requests>=2.31.0"
+]

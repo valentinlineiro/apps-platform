@@ -37,7 +37,18 @@ def create_app() -> Flask:
     app.register_blueprint(batch.bp)
     app.register_blueprint(settings.bp)
 
-    from app.services import registration_service
-    registration_service.start()
+    from platform_sdk import start_registration
+    start_registration({
+        "manifestVersion": 1,
+        "id": "exam-corrector",
+        "name": "exam-corrector",
+        "description": "Corrección automática de exámenes con Gemini Vision",
+        "route": "exam-corrector",
+        "icon": "📝",
+        "status": "stable",
+        "scriptUrl": "/apps/exam-corrector/element/main.js",
+        "elementTag": "exam-corrector-app",
+        "backend": {"pathPrefix": "/exam-corrector/"}
+    })
 
     return app
