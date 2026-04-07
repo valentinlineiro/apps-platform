@@ -14,16 +14,13 @@ import { AppRegistryService } from '../services/app-registry.service';
         <button class="logout" type="button" (click)="logout()">Logout</button>
       </header>
       <p class="subtitle">Directorio de aplicaciones</p>
-      @for (app of registry.apps.value() ?? []; track app.id) {
-        @if (app.status !== 'disabled') {
+      @for (app of registry.apps(); track app.id) {
+        @if (app.status !== 'disabled' && app.route !== '') {
           <a class="card" [routerLink]="'/' + app.route" [class.wip]="app.status === 'wip'">
             <h2>{{ app.icon }} {{ app.name }}</h2>
             <p>{{ app.description }}</p>
           </a>
         }
-      }
-      @if (registry.apps.isLoading()) {
-        <p class="loading">Cargando...</p>
       }
     </main>
   `,

@@ -1,4 +1,4 @@
-import { Injectable, resource } from '@angular/core';
+import { Injectable, resource, signal } from '@angular/core';
 
 export interface AppManifest {
   id: string;
@@ -14,7 +14,19 @@ export interface AppManifest {
 
 @Injectable({ providedIn: 'root' })
 export class AppRegistryService {
-  readonly apps = resource<AppManifest[], unknown>({
-    loader: () => fetch('/api/registry').then(r => r.json()) as Promise<AppManifest[]>
-  });
+  private _apps = signal<AppManifest[]>([]);
+  readonly apps = this._apps.asReadonly();
+
+  async loadRegistry(): Promise<AppManifest[]> {
+    try {
+      const response = await fetch('/api/registry');
+      if (!response.ok) return [];
+      const data = await response.json();
+      this._apps.set(data);
+      return data;
+    } catch (e) {
+      console.error('Failed to load registry', e);
+      return [];
+    }
+  }
 }
