@@ -5,8 +5,6 @@ services:
     build:
       context: .
       dockerfile: apps/portal/Dockerfile
-    ports:
-      - "4200:80"
     depends_on:
       - portal-backend
       - exam-corrector-backend
@@ -24,16 +22,19 @@ services:
         condition: service_healthy
     environment:
       - PORTAL_SESSION_SECRET=${PORTAL_SESSION_SECRET:-dev-portal-session-secret}
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
       - OAUTH_PROVIDER=keycloak
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-portal}
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET:-portal-dev-secret}
       - OAUTH_SCOPE=openid profile email
-      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:4200/auth/callback}
-      - OAUTH_AUTHORIZE_URL=${OAUTH_AUTHORIZE_URL:-http://localhost:8081/realms/apps-platform/protocol/openid-connect/auth}
-      - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/token}
-      - OAUTH_USERINFO_URL=${OAUTH_USERINFO_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/userinfo}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-https://localhost/auth/callback}
+      - OAUTH_AUTHORIZE_URL=${OAUTH_AUTHORIZE_URL:-https://localhost/realms/apps-platform/protocol/openid-connect/auth}
+      - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-https://localhost/realms/apps-platform/protocol/openid-connect/token}
+      - OAUTH_USERINFO_URL=${OAUTH_USERINFO_URL:-https://localhost/realms/apps-platform/protocol/openid-connect/userinfo}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
+      - OAUTH_VERIFY_SSL=false
+    extra_hosts:
+      - "localhost:172.19.0.7"
     restart: unless-stopped
 
   exam-corrector-backend:
@@ -88,14 +89,13 @@ services:
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
       - KC_HEALTH_ENABLED=true
-      - KC_HOSTNAME=http://localhost:8081
+      - KC_HOSTNAME=localhost
+      - KC_PROXY=edge
       - KC_HOSTNAME_STRICT=false
       - KC_DB=postgres
       - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak
       - KC_DB_USERNAME=${POSTGRES_USER:-keycloak}
       - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-keycloak}
-    ports:
-      - "8081:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,6 +110,23 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  caddy:
+    image: caddy:2.7-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.local:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - portal
+      - keycloak
+    restart: unless-stopped
+
 volumes:
   exam_corrector_uploads:
   postgres_data:
+  caddy_data:
+  caddy_config:
