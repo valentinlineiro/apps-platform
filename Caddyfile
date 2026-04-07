@@ -1,0 +1,11 @@
+{$DOMAIN} {
+    # Keycloak — must come before the catch-all
+    handle /keycloak/* {
+        reverse_proxy keycloak:8080
+    }
+
+    # Everything else → portal nginx (which proxies /api/, /auth/, /exam-corrector/ internally)
+    handle {
+        reverse_proxy portal:80
+    }
+}

@@ -1,0 +1,126 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - portal
+      - keycloak
+
+  portal:
+    image: ghcr.io/${GHCR_REPO}/portal:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/portal/Dockerfile
+    expose:
+      - "80"
+    depends_on:
+      - portal-backend
+      - exam-corrector-backend
+    restart: unless-stopped
+
+  portal-backend:
+    image: ghcr.io/${GHCR_REPO}/portal-backend:${IMAGE_TAG:-latest}
+    build: ./apps/portal/backend
+    expose:
+      - "5000"
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      - PORTAL_SESSION_SECRET=${PORTAL_SESSION_SECRET}
+      - SESSION_COOKIE_SECURE=true
+      - OAUTH_PROVIDER=keycloak
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID:-portal}
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - OAUTH_SCOPE=openid profile email
+      - OAUTH_REDIRECT_URI=https://${DOMAIN}/auth/callback
+      - OAUTH_AUTHORIZE_URL=https://${DOMAIN}/keycloak/realms/apps-platform/protocol/openid-connect/auth
+      # Token and userinfo calls are server-side — use the internal Docker hostname
+      - OAUTH_TOKEN_URL=http://keycloak:8080/keycloak/realms/apps-platform/protocol/openid-connect/token
+      - OAUTH_USERINFO_URL=http://keycloak:8080/keycloak/realms/apps-platform/protocol/openid-connect/userinfo
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD}@postgres:5432/portal
+    restart: unless-stopped
+
+  exam-corrector-backend:
+    image: ghcr.io/${GHCR_REPO}/exam-corrector-backend:${IMAGE_TAG:-latest}
+    build:
+      context: apps/exam-corrector
+      dockerfile: backend/Dockerfile
+    expose:
+      - "8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ALLOWED_ORIGINS=https://${DOMAIN}
+      - PORTAL_BACKEND_URL=http://portal-backend:5000
+    volumes:
+      - exam_corrector_uploads:/app/uploads
+    depends_on:
+      - portal-backend
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=keycloak
+      - POSTGRES_USER=${POSTGRES_USER:-keycloak}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./apps/portal/backend/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-keycloak} -d keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.2
+    # 'start' enables production mode. First boot is slower (builds optimised server).
+    # The realm is auto-imported from the mounted JSON on first run.
+    command: ["start", "--import-realm"]
+    environment:
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
+      - KC_HEALTH_ENABLED=true
+      - KC_HOSTNAME=https://${DOMAIN}
+      - KC_HTTP_RELATIVE_PATH=/keycloak
+      - KC_HOSTNAME_STRICT=false
+      - KC_HTTP_ENABLED=true
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak
+      - KC_DB_USERNAME=${POSTGRES_USER:-keycloak}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD}
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/portal/backend/keycloak:/opt/keycloak/data/import:ro
+      - ./apps/portal/backend/keycloak/themes:/opt/keycloak/themes:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /keycloak/realms/apps-platform HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 120s
+    restart: unless-stopped
+
+volumes:
+  exam_corrector_uploads:
+  postgres_data:
+  caddy_data:
+  caddy_config:
