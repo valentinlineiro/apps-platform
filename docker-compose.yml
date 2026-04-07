@@ -20,6 +20,8 @@ services:
     depends_on:
       keycloak:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       - PORTAL_SESSION_SECRET=${PORTAL_SESSION_SECRET:-dev-portal-session-secret}
       - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
@@ -31,6 +33,7 @@ services:
       - OAUTH_AUTHORIZE_URL=${OAUTH_AUTHORIZE_URL:-http://localhost:8081/realms/apps-platform/protocol/openid-connect/auth}
       - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/token}
       - OAUTH_USERINFO_URL=${OAUTH_USERINFO_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/userinfo}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
     restart: unless-stopped
 
   exam-corrector-backend:
@@ -61,6 +64,23 @@ services:
   #     - portal-backend
   #   restart: unless-stopped
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=keycloak
+      - POSTGRES_USER=${POSTGRES_USER:-keycloak}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-keycloak}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./apps/portal/backend/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-keycloak} -d keycloak"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.2.2
     command: ["start-dev", "--import-realm"]
@@ -70,8 +90,15 @@ services:
       - KC_HEALTH_ENABLED=true
       - KC_HOSTNAME=http://localhost:8081
       - KC_HOSTNAME_STRICT=false
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak
+      - KC_DB_USERNAME=${POSTGRES_USER:-keycloak}
+      - KC_DB_PASSWORD=${POSTGRES_PASSWORD:-keycloak}
     ports:
       - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./apps/portal/backend/keycloak:/opt/keycloak/data/import:ro
       - ./apps/portal/backend/keycloak/themes:/opt/keycloak/themes:ro
@@ -85,3 +112,4 @@ services:
 
 volumes:
   exam_corrector_uploads:
+  postgres_data:
