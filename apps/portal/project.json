@@ -1,0 +1,26 @@
+{
+  "name": "portal",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/portal/src",
+  "targets": {
+    "start": {
+      "command": "npm run start",
+      "options": {
+        "cwd": "apps/portal"
+      }
+    },
+    "build": {
+      "command": "npm run build",
+      "options": {
+        "cwd": "apps/portal"
+      }
+    },
+    "test": {
+      "command": "npm run test",
+      "options": {
+        "cwd": "apps/portal"
+      }
+    }
+  }
+}

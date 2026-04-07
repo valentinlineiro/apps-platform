@@ -1,0 +1,20 @@
+{
+  "name": "attendance-checker",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/attendance-checker/frontend/src",
+  "targets": {
+    "build": {
+      "command": "npm run build",
+      "options": {
+        "cwd": "apps/attendance-checker"
+      }
+    },
+    "build:dev": {
+      "command": "npm run build:dev",
+      "options": {
+        "cwd": "apps/attendance-checker"
+      }
+    }
+  }
+}

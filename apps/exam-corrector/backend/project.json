@@ -1,0 +1,14 @@
+{
+  "name": "exam-corrector-backend",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/exam-corrector/backend",
+  "targets": {
+    "run": {
+      "command": "python wsgi.py",
+      "options": {
+        "cwd": "apps/exam-corrector/backend"
+      }
+    }
+  }
+}

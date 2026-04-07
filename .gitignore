@@ -3,3 +3,11 @@
 **/*.pyc
 .env
 .DS_Store
+
+
+
+.nx/cache
+.nx/workspace-data
+.nx/polygraph
+.claude/worktrees
+.claude/settings.local.json
