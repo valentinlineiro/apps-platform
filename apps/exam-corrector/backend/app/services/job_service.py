@@ -133,11 +133,16 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
     respuestas = result.get("respuestas", [])
     if progress_cb:
         progress_cb(82, "formatting", "Preparando informe...")
+    CONFIDENCE_THRESHOLD = 0.80
     feedback = []
     for r in respuestas:
         correcta = bool(r.get("correcta", False))
         resp_correcta = r.get("respuesta_correcta") or ""
         resp_dada = r.get("respuesta_dada") or "— sin marcar —"
+        try:
+            confianza = float(r.get("confianza", 1.0))
+        except (TypeError, ValueError):
+            confianza = 1.0
         feedback.append({
             "pregunta": r.get("pregunta", len(feedback) + 1),
             "pregunta_label": f"Pregunta {r.get('pregunta', len(feedback) + 1)}",
@@ -147,6 +152,7 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
             "detalle_opciones": r.get("regla_aplicada", "Regla no indicada"),
             "estado": "Correcta" if correcta else "Incorrecta",
             "correcta": correcta,
+            "confianza": round(confianza, 3),
             "recorte_correcta": "",
             "recorte_dada": "",
         })
@@ -156,6 +162,8 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
     porcentaje = (puntaje / total * 100) if total else 0
     nombre = result.get("nombre", "Alumno desconocido")
     warning = "" if feedback else "Gemini no detectó respuestas en las imágenes."
+    min_confidence = min((f["confianza"] for f in feedback), default=1.0)
+    needs_review = min_confidence < CONFIDENCE_THRESHOLD
     tipo_examen = normalizar_tipo_examen(result.get("tipo_examen", "test"))
     reglas = cargar_reglas_evaluacion()
     scoring = aplicar_reglas_puntuacion(feedback, tipo_examen, reglas)
@@ -176,6 +184,8 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
         "scoring_resumen": scoring["resumen"],
         "total_puntos": scoring["total_puntos"],
         "max_puntos": scoring["max_puntos"],
+        "min_confidence": round(min_confidence, 3),
+        "needs_review": needs_review,
     }
 
 

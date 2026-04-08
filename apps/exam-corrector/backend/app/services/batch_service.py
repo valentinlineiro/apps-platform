@@ -53,12 +53,15 @@ def init_tables() -> None:
         """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS batch_items (
-                batch_id    TEXT NOT NULL,
-                idx         INTEGER NOT NULL,
-                filename    TEXT NOT NULL,
-                status      TEXT NOT NULL DEFAULT 'queued',
-                result_json TEXT,
-                error       TEXT,
+                batch_id     TEXT NOT NULL,
+                idx          INTEGER NOT NULL,
+                filename     TEXT NOT NULL,
+                status       TEXT NOT NULL DEFAULT 'queued',
+                result_json  TEXT,
+                error        TEXT,
+                confidence   REAL,
+                needs_review INTEGER NOT NULL DEFAULT 0,
+                reviewed     INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (batch_id, idx)
             )
         """)
@@ -174,10 +177,12 @@ def _process_item(
                     (batch_id,),
                 )
         else:
+            needs_review = int(result.get("needs_review", False))
+            confidence = result.get("min_confidence")
             with _connect() as conn:
                 conn.execute(
-                    "UPDATE batch_items SET status='done', result_json=? WHERE batch_id=? AND idx=?",
-                    (json.dumps(result), batch_id, idx),
+                    "UPDATE batch_items SET status='done', result_json=?, confidence=?, needs_review=? WHERE batch_id=? AND idx=?",
+                    (json.dumps(result), confidence, needs_review, batch_id, idx),
                 )
                 conn.execute(
                     "UPDATE batches SET done=done+1 WHERE id=?",
@@ -219,6 +224,10 @@ def get_status(batch_id: str) -> dict | None:
             "SELECT filename FROM batch_items WHERE batch_id=? AND status='processing' ORDER BY idx LIMIT 1",
             (batch_id,),
         ).fetchone()
+        review_row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM batch_items WHERE batch_id=? AND needs_review=1 AND reviewed=0",
+            (batch_id,),
+        ).fetchone()
     total = row["total"]
     done = row["done"]
     failed = row["failed"]
@@ -229,6 +238,7 @@ def get_status(batch_id: str) -> dict | None:
         "finished": row["finished_at"] is not None,
         "progress": round((done + failed) / total * 100) if total else 0,
         "current_item": item_row["filename"] if item_row else None,
+        "needs_review": review_row["cnt"] if review_row else 0,
     }
 
 
@@ -238,22 +248,65 @@ def get_items(batch_id: str) -> list | None:
         if not exists:
             return None
         rows = conn.execute(
-            "SELECT filename, status, result_json, error FROM batch_items WHERE batch_id=? ORDER BY idx",
+            "SELECT filename, status, result_json, error, confidence, needs_review, reviewed "
+            "FROM batch_items WHERE batch_id=? ORDER BY idx",
             (batch_id,),
         ).fetchall()
     items = []
     for row in rows:
-        item: dict = {"filename": row["filename"], "status": row["status"]}
+        item: dict = {
+            "filename": row["filename"],
+            "status": row["status"],
+            "needs_review": bool(row["needs_review"]),
+            "reviewed": bool(row["reviewed"]),
+        }
         if row["status"] == "done" and row["result_json"]:
             r = json.loads(row["result_json"])
             item["nombre"] = r.get("nombre", "")
             item["total_puntos"] = r.get("total_puntos", 0)
             item["max_puntos"] = r.get("max_puntos", 0)
             item["porcentaje_puntos"] = r.get("porcentaje_puntos", 0)
+            item["confidence"] = row["confidence"]
         elif row["status"] == "error":
             item["error"] = row["error"] or ""
         items.append(item)
     return items
+
+
+def get_review_items(batch_id: str) -> list | None:
+    with _connect() as conn:
+        exists = conn.execute("SELECT 1 FROM batches WHERE id=?", (batch_id,)).fetchone()
+        if not exists:
+            return None
+        rows = conn.execute(
+            "SELECT idx, filename, result_json, confidence, reviewed "
+            "FROM batch_items WHERE batch_id=? AND needs_review=1 ORDER BY idx",
+            (batch_id,),
+        ).fetchall()
+    items = []
+    for row in rows:
+        r = json.loads(row["result_json"]) if row["result_json"] else {}
+        items.append({
+            "idx": row["idx"],
+            "filename": row["filename"],
+            "confidence": row["confidence"],
+            "reviewed": bool(row["reviewed"]),
+            "nombre": r.get("nombre", ""),
+            "total_puntos": r.get("total_puntos", 0),
+            "max_puntos": r.get("max_puntos", 0),
+            "porcentaje_puntos": r.get("porcentaje_puntos", 0),
+            "feedback": r.get("feedback", []),
+        })
+    return items
+
+
+def mark_reviewed(batch_id: str, idx: int) -> bool:
+    with _connect() as conn:
+        result = conn.execute(
+            "UPDATE batch_items SET reviewed=1 WHERE batch_id=? AND idx=? AND needs_review=1",
+            (batch_id, idx),
+        )
+    return result.rowcount > 0
 
 
 def get_csv(batch_id: str) -> str:

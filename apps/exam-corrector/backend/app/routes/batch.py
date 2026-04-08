@@ -59,6 +59,22 @@ def batch_items(batch_id: str):
     return jsonify({"ok": True, "items": items})
 
 
+@bp.route("/exam-corrector/batch/review/<batch_id>", methods=["GET"])
+def batch_review(batch_id: str):
+    items = batch_service.get_review_items(batch_id)
+    if items is None:
+        return jsonify({"ok": False, "error": "Batch no encontrado"}), 404
+    return jsonify({"ok": True, "items": items})
+
+
+@bp.route("/exam-corrector/batch/review/<batch_id>/<int:idx>", methods=["POST"])
+def batch_mark_reviewed(batch_id: str, idx: int):
+    ok = batch_service.mark_reviewed(batch_id, idx)
+    if not ok:
+        return jsonify({"ok": False, "error": "Ítem no encontrado o no requiere revisión"}), 404
+    return jsonify({"ok": True})
+
+
 @bp.route("/exam-corrector/batch/result/<batch_id>", methods=["GET"])
 def batch_result(batch_id: str):
     status = batch_service.get_status(batch_id)

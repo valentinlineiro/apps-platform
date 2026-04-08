@@ -60,10 +60,15 @@ Devuelve SOLO JSON:
       "respuesta_correcta": "texto plantilla",
       "respuesta_dada": "texto alumno o null o MULTIPLE o ILEGIBLE",
       "correcta": true,
-      "regla_aplicada": "Regla 1"
+      "regla_aplicada": "Regla 1",
+      "confianza": 1.0
     }
   ]
 }
+
+El campo "confianza" por respuesta indica qué tan seguro estás de haber leído correctamente
+la marca del alumno (1.0 = completamente seguro, 0.0 = completamente inseguro).
+Usa valores bajos (< 0.8) cuando la marca sea ambigua, tachada, poco clara o haya múltiples marcas.
 """
 
 

@@ -109,6 +109,37 @@ export class ExamCorrectorApiService {
     );
   }
 
+  getReviewItems(batchId: string) {
+    return firstValueFrom(
+      this.http.get<{
+        ok: boolean;
+        items: Array<{
+          idx: number;
+          filename: string;
+          confidence: number;
+          reviewed: boolean;
+          nombre: string;
+          total_puntos: number;
+          max_puntos: number;
+          porcentaje_puntos: number;
+          feedback: Array<{
+            pregunta_label: string;
+            respuesta_dada: string;
+            respuesta_correcta: string;
+            estado: string;
+            confianza: number;
+          }>;
+        }>;
+      }>(`/exam-corrector/batch/review/${batchId}`)
+    );
+  }
+
+  markReviewed(batchId: string, idx: number) {
+    return firstValueFrom(
+      this.http.post<{ ok: boolean }>(`/exam-corrector/batch/review/${batchId}/${idx}`, {})
+    );
+  }
+
   batchResultUrl(batchId: string): string {
     return `/exam-corrector/batch/result/${batchId}`;
   }
