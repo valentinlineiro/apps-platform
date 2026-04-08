@@ -24,9 +24,9 @@ services:
       caddy.handle_1: /auth/*
       caddy.handle_1.reverse_proxy: "{{upstreams 5000}}"
     volumes:
-      - ./libs:/libs:ro
+      - ./libs:/libs
     command: >
-      bash -c "pip install -e /libs/platform-python-sdk && gunicorn app:app --bind 0.0.0.0:5000 --workers 2 --timeout 120"
+      bash -c "cd /libs/platform-python-sdk && python setup.py develop && cd /app && gunicorn app:app --bind 0.0.0.0:5000 --workers 2 --timeout 120"
     expose:
       - "5000"
     depends_on:
@@ -64,14 +64,14 @@ services:
     expose:
       - "8000"
     command: >
-      bash -c "pip install -e /libs/platform-python-sdk && gunicorn wsgi:app --bind 0.0.0.0:8000 --workers 2 --timeout 120"
+      bash -c "cd /libs/platform-python-sdk && python setup.py develop && cd /app && gunicorn wsgi:app --bind 0.0.0.0:8000 --workers 2 --timeout 120"
     environment:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - ALLOWED_ORIGINS=http://localhost:4200
       - PORTAL_BACKEND_URL=http://portal-backend:5000
     volumes:
       - exam_corrector_uploads:/app/uploads
-      - ./libs:/libs:ro
+      - ./libs:/libs
     depends_on:
       - portal-backend
     restart: unless-stopped
@@ -138,17 +138,17 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: lucaslorentz/caddy-docker-proxy:2.8-alpine
+    image: caddy:2.7-alpine
     ports:
       - "80:80"
       - "443:443"
       - "443:443/udp"
     environment:
-      - CADDY_DOCKER_CADDYFILE_PATH=/etc/caddy/Caddyfile
-      - CADDY_DOCKER_MODE=server
+      - DOMAIN=localhost
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - caddy_data:/data
+      - caddy_config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
     depends_on:
       - portal
       - keycloak
