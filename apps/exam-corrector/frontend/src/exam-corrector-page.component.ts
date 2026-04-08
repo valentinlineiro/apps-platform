@@ -93,8 +93,8 @@ const POLL_INTERVAL_MS = 1500;
           }
         </select>
 
-        <label>Exámenes (ZIP con imágenes JPG/PNG)</label>
-        <input type="file" (change)="onBatchFile($event)" accept=".zip" />
+        <label>Exámenes (PDF con una página por examen, o ZIP con imágenes JPG/PNG)</label>
+        <input type="file" (change)="onBatchFile($event)" accept=".pdf,.zip" />
 
         <button type="submit" [disabled]="batchLoading()">Iniciar corrección en lote</button>
       </form>
@@ -340,7 +340,7 @@ export class ExamCorrectorPageComponent {
       return;
     }
     if (!this.batchFile()) {
-      this.batchStatus.set('Selecciona un archivo ZIP.');
+      this.batchStatus.set('Selecciona un archivo PDF o ZIP.');
       return;
     }
 

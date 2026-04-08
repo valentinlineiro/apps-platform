@@ -20,15 +20,19 @@ def batch_start():
     if not ruta_plantilla:
         return jsonify({"ok": False, "error": "La plantilla seleccionada no existe."}), 400
 
-    zip_file = request.files.get("examenes")
-    if not zip_file:
-        return jsonify({"ok": False, "error": "Falta el archivo ZIP con los exámenes."}), 400
+    upload = request.files.get("examenes")
+    if not upload:
+        return jsonify({"ok": False, "error": "Falta el archivo ZIP o PDF con los exámenes."}), 400
 
-    zip_path = os.path.join(config.UPLOAD_FOLDER, f"batch_{uuid.uuid4()}.zip")
-    zip_file.save(zip_path)
+    original_ext = os.path.splitext(upload.filename or "")[1].lower()
+    if original_ext not in {".zip", ".pdf"}:
+        return jsonify({"ok": False, "error": "El archivo debe ser un ZIP o un PDF."}), 400
+
+    file_path = os.path.join(config.UPLOAD_FOLDER, f"batch_{uuid.uuid4()}{original_ext}")
+    upload.save(file_path)
 
     try:
-        batch_id = batch_service.start_batch(zip_path, template_id, ruta_plantilla)
+        batch_id = batch_service.start_batch(file_path, template_id, ruta_plantilla)
     except ValueError as exc:
         current_app.logger.warning("Batch start validation error: %s", exc)
         return jsonify({"ok": False, "error": str(exc)}), 400

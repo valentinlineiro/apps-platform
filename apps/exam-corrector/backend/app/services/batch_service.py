@@ -19,6 +19,7 @@ _semaphore: threading.Semaphore | None = None
 _sem_lock = threading.Lock()
 
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+_PDF_DPI = 150
 
 
 def _get_semaphore() -> threading.Semaphore:
@@ -63,34 +64,64 @@ def init_tables() -> None:
         """)
 
 
-def start_batch(zip_path: str, template_id: str, ruta_plantilla: str) -> str:
+def _extract_from_zip(zip_path: str, extract_dir: str) -> list[tuple[str, str]]:
+    exam_files: list[tuple[str, str]] = []
+    with zipfile.ZipFile(zip_path) as zf:
+        for entry in sorted(zf.namelist()):
+            if entry.endswith("/"):
+                continue
+            ext = os.path.splitext(entry)[1].lower()
+            if ext not in _IMAGE_EXTENSIONS:
+                continue
+            safe_name = os.path.basename(entry)
+            dest = os.path.join(extract_dir, f"{len(exam_files):04d}_{safe_name}")
+            with zf.open(entry) as src, open(dest, "wb") as dst:
+                dst.write(src.read())
+            exam_files.append((safe_name, dest))
+    if not exam_files:
+        raise ValueError("El ZIP no contiene imágenes (.jpg, .jpeg, .png).")
+    return exam_files
+
+
+def _extract_from_pdf(pdf_path: str, extract_dir: str) -> list[tuple[str, str]]:
+    import fitz  # pymupdf
+    exam_files: list[tuple[str, str]] = []
+    doc = fitz.open(pdf_path)
+    try:
+        if doc.page_count == 0:
+            raise ValueError("El PDF no contiene páginas.")
+        for i in range(doc.page_count):
+            page = doc.load_page(i)
+            pix = page.get_pixmap(dpi=_PDF_DPI)
+            filename = f"pagina_{i + 1:04d}.jpg"
+            dest = os.path.join(extract_dir, filename)
+            pix.save(dest)
+            exam_files.append((filename, dest))
+    finally:
+        doc.close()
+    return exam_files
+
+
+def start_batch(file_path: str, template_id: str, ruta_plantilla: str) -> str:
     batch_id = str(uuid.uuid4())
     extract_dir = os.path.join(config.UPLOAD_FOLDER, f"batch_{batch_id}")
     os.makedirs(extract_dir, exist_ok=True)
 
+    ext = os.path.splitext(file_path)[1].lower()
     try:
-        exam_files: list[tuple[str, str]] = []  # (display_name, full_path)
-        with zipfile.ZipFile(zip_path) as zf:
-            for entry in sorted(zf.namelist()):
-                if entry.endswith("/"):
-                    continue
-                ext = os.path.splitext(entry)[1].lower()
-                if ext not in _IMAGE_EXTENSIONS:
-                    continue
-                safe_name = os.path.basename(entry)
-                dest = os.path.join(extract_dir, f"{len(exam_files):04d}_{safe_name}")
-                with zf.open(entry) as src, open(dest, "wb") as dst:
-                    dst.write(src.read())
-                exam_files.append((safe_name, dest))
+        if ext == ".pdf":
+            exam_files = _extract_from_pdf(file_path, extract_dir)
+        else:
+            exam_files = _extract_from_zip(file_path, extract_dir)
     finally:
         try:
-            os.remove(zip_path)
+            os.remove(file_path)
         except OSError:
             pass
 
     if not exam_files:
         shutil.rmtree(extract_dir, ignore_errors=True)
-        raise ValueError("El ZIP no contiene imágenes (.jpg, .jpeg, .png).")
+        raise ValueError("El archivo no contiene exámenes válidos.")
 
     total = len(exam_files)
     now = time.time()
