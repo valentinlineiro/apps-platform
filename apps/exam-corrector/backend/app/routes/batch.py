@@ -1,10 +1,11 @@
 import os
 import uuid
 
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response, current_app
 
 from app import config
 from app.services import batch_service, template_service
+from platform_sdk.observability import log_exception
 
 bp = Blueprint("batch", __name__)
 
@@ -29,8 +30,10 @@ def batch_start():
     try:
         batch_id = batch_service.start_batch(zip_path, template_id, ruta_plantilla)
     except ValueError as exc:
+        current_app.logger.warning("Batch start validation error: %s", exc)
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
+        log_exception("Unexpected error starting batch")
         return jsonify({"ok": False, "error": str(exc)}), 500
 
     return jsonify({"ok": True, "batch_id": batch_id})

@@ -11,6 +11,7 @@ import urllib.parse
 import requests as http_requests
 from flask import Flask, jsonify, redirect, request, session
 from flask_cors import CORS
+from platform_sdk.observability import setup_logging
 
 try:
     import psycopg2
@@ -19,6 +20,7 @@ except ImportError:
     psycopg2 = None  # type: ignore[assignment]
 
 app = Flask(__name__)
+setup_logging(app)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.secret_key = os.environ.get("PORTAL_SESSION_SECRET", "dev-portal-secret-change-me")
 app.config["SESSION_COOKIE_HTTPONLY"] = True

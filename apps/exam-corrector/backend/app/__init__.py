@@ -7,6 +7,7 @@ from app import config
 from app.services import template_service
 from app.services.job_store import JobStore
 from app.services import job_service
+from platform_sdk.observability import setup_logging
 
 
 def create_app() -> Flask:
@@ -14,6 +15,7 @@ def create_app() -> Flask:
         __name__,
         template_folder=os.path.join(config.BASE_DIR, "templates"),
     )
+    setup_logging(app)
 
     CORS(app, resources={r"/exam-corrector/*": {"origins": config.ALLOWED_ORIGINS}})
 
