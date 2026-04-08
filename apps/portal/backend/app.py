@@ -639,16 +639,3 @@ _ensure_db_exists()
 _init_db()
 _init_static_apps()
 
-from platform_sdk import start_registration
-start_registration({
-    "manifestVersion": 1,
-    "id": "portal",
-    "name": "Portal",
-    "description": "Panel central de aplicaciones",
-    "route": "",
-    "icon": "🏠",
-    "status": "stable",
-    "scriptUrl": "/main.js", # Placeholder for core apps if needed
-    "elementTag": "app-root",
-    "backend": {"pathPrefix": "/api/"}
-})
