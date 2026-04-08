@@ -7,6 +7,8 @@ from app import config
 from app.services.image_service import encode_for_gemini
 from app.services import template_service
 
+BATCH_SIZE = 10
+
 PROMPT_TEMPLATE_MODEL = """
 Analiza UNA imagen de plantilla de examen tipo test (economía) con respuestas correctas marcadas.
 Construye un modelo intermedio reutilizable.
@@ -71,6 +73,56 @@ la marca del alumno (1.0 = completamente seguro, 0.0 = completamente inseguro).
 Usa valores bajos (< 0.8) cuando la marca sea ambigua, tachada, poco clara o haya múltiples marcas.
 """
 
+PROMPT_CORRECCION_LOTE = """
+Recibes __N__ imágenes de exámenes de alumnos. Cada imagen va precedida de su etiqueta [Imagen K: nombre].
+También recibes un MODELO de plantilla en JSON con las respuestas correctas.
+
+MODELO PLANTILLA:
+__TEMPLATE_MODEL__
+
+Para CADA imagen aplica exactamente las mismas reglas que para un examen individual:
+- Detecta las respuestas marcadas por el alumno, en el mismo orden que el modelo.
+- Compara contra la plantilla.
+- Extrae el nombre del alumno de "APELLIDOS Y NOMBRE".
+- Asigna confianza por cada respuesta.
+
+Reglas de corrección:
+- Regla 1: correcta solo si coincide con respuesta_correcta del modelo.
+- Regla 2: sin marca → respuesta_dada = null, incorrecta.
+- Regla 3: múltiples marcas → MULTIPLE, incorrecta.
+- Regla 4: ilegible → ILEGIBLE, incorrecta.
+- Regla 5: no inventar preguntas fuera del modelo.
+- confianza: 1.0 = completamente seguro; usa < 0.8 para marcas ambiguas, tachadas o poco claras.
+
+Devuelve SOLO JSON con este formato exacto (el array debe tener exactamente __N__ elementos):
+{
+  "resultados": [
+    {
+      "imagen": 1,
+      "tipo_examen": "test",
+      "compatible": true,
+      "confianza": 0.0,
+      "motivo": "explicación breve",
+      "nombre": "apellidos y nombre",
+      "total": 0,
+      "respuestas": [
+        {
+          "pregunta": 1,
+          "respuesta_correcta": "texto plantilla",
+          "respuesta_dada": "texto alumno o null o MULTIPLE o ILEGIBLE",
+          "correcta": true,
+          "regla_aplicada": "Regla 1",
+          "confianza": 1.0
+        }
+      ]
+    }
+  ]
+}
+
+IMPORTANTE: el campo "imagen" debe ser el índice numérico (1, 2, ..., __N__) de la imagen
+correspondiente, en el mismo orden en que aparecen. No omitas ningún resultado.
+"""
+
 
 
 def parsear_json_de_texto(texto: str) -> dict:
@@ -100,6 +152,39 @@ def llamar_gemini(parts: list, prompt: str, timeout: int = 90) -> dict:
     resp.raise_for_status()
     texto = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
     return parsear_json_de_texto(texto)
+
+
+def llamar_gemini_lote(
+    images: list[tuple[str, str]],  # (filename, b64_jpeg)
+    template_model: dict,
+    timeout: int = 180,
+) -> list[dict]:
+    """Send up to BATCH_SIZE exams in one Gemini call. Returns ordered list of raw results."""
+    n = len(images)
+    parts = []
+    for i, (filename, b64) in enumerate(images, 1):
+        parts.append({"text": f"[Imagen {i}: {filename}]"})
+        parts.append({"inline_data": {"mime_type": "image/jpeg", "data": b64}})
+
+    prompt = (
+        PROMPT_CORRECCION_LOTE
+        .replace("__TEMPLATE_MODEL__", json.dumps(template_model, ensure_ascii=False))
+        .replace("__N__", str(n))
+    )
+    raw = llamar_gemini(parts, prompt, timeout=timeout)
+
+    resultados = raw.get("resultados")
+    if not isinstance(resultados, list):
+        raise ValueError("La respuesta del lote no contiene 'resultados'.")
+    if len(resultados) != n:
+        raise ValueError(f"Se esperaban {n} resultados, se recibieron {len(resultados)}.")
+
+    resultados.sort(key=lambda r: r.get("imagen", 0))
+    for i, r in enumerate(resultados, 1):
+        if r.get("imagen") != i:
+            raise ValueError(f"Resultado faltante para imagen {i} (se recibió {r.get('imagen')}).")
+
+    return resultados
 
 
 def obtener_modelo_plantilla(b64_p: str, template_hash: str, progress_cb=None) -> dict:

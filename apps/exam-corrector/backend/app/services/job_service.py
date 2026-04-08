@@ -130,10 +130,20 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
             conf = 0.0
         return _resultado_error(f"Plantilla incompatible (confianza {conf:.2f}). {motivo}")
 
-    respuestas = result.get("respuestas", [])
     if progress_cb:
         progress_cb(82, "formatting", "Preparando informe...")
-    CONFIDENCE_THRESHOLD = 0.80
+    formatted = _formatear_resultado(result, modelo_plantilla)
+    if progress_cb:
+        progress_cb(96, "finalizing", "Finalizando resultado...")
+    return formatted
+
+
+_CONFIDENCE_THRESHOLD = 0.80
+
+
+def _formatear_resultado(result: dict, modelo_plantilla: dict) -> dict:
+    """Convert a raw Gemini correction response into the final result dict."""
+    respuestas = result.get("respuestas", [])
     feedback = []
     for r in respuestas:
         correcta = bool(r.get("correcta", False))
@@ -163,13 +173,11 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
     nombre = result.get("nombre", "Alumno desconocido")
     warning = "" if feedback else "Gemini no detectó respuestas en las imágenes."
     min_confidence = min((f["confianza"] for f in feedback), default=1.0)
-    needs_review = min_confidence < CONFIDENCE_THRESHOLD
+    needs_review = min_confidence < _CONFIDENCE_THRESHOLD
     tipo_examen = normalizar_tipo_examen(result.get("tipo_examen", "test"))
     reglas = cargar_reglas_evaluacion()
     scoring = aplicar_reglas_puntuacion(feedback, tipo_examen, reglas)
     porcentaje_puntos = (scoring["total_puntos"] / scoring["max_puntos"] * 100) if scoring["max_puntos"] else 0
-    if progress_cb:
-        progress_cb(96, "finalizing", "Finalizando resultado...")
 
     return {
         "nombre": nombre,
@@ -187,6 +195,56 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
         "min_confidence": round(min_confidence, 3),
         "needs_review": needs_review,
     }
+
+
+def procesar_correccion_lote(
+    ruta_plantilla: str,
+    examen_items: list[tuple[str, str]],  # (filename, ruta_examen)
+) -> list[dict]:
+    """Correct up to BATCH_SIZE exams in one Gemini call. Returns results in input order."""
+    from app.services.gemini_service import llamar_gemini_lote, obtener_modelo_plantilla, BATCH_SIZE
+
+    # Load and encode plantilla
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        plantilla_a4 = ex.submit(load_and_crop, ruta_plantilla).result()
+    b64_p, template_hash = encode_for_gemini(plantilla_a4)
+    modelo_plantilla = obtener_modelo_plantilla(b64_p, template_hash)
+
+    # Load and encode all exam images in parallel
+    def _load_exam(item: tuple[str, str]) -> tuple[str, str]:
+        filename, ruta = item
+        try:
+            img = load_and_crop(ruta)
+            b64, _ = encode_for_gemini(img)
+            return filename, b64
+        except ValueError:
+            return filename, ""
+
+    with ThreadPoolExecutor(max_workers=min(len(examen_items), BATCH_SIZE)) as ex:
+        encoded = list(ex.map(_load_exam, examen_items))
+
+    # Separate items that failed image loading
+    good: list[tuple[int, str, str]] = []   # (original_idx, filename, b64)
+    bad_indices: set[int] = set()
+    for orig_idx, (filename, b64) in enumerate(encoded):
+        if b64:
+            good.append((orig_idx, filename, b64))
+        else:
+            bad_indices.add(orig_idx)
+
+    results: list[dict | None] = [None] * len(examen_items)
+
+    # Fill errors for failed image loads
+    for i in bad_indices:
+        results[i] = _resultado_error("No se pudo leer la imagen del examen.")
+
+    if good:
+        images = [(filename, b64) for _, filename, b64 in good]
+        raw_list = llamar_gemini_lote(images, modelo_plantilla)
+        for (orig_idx, _, _), raw in zip(good, raw_list):
+            results[orig_idx] = _formatear_resultado(raw, modelo_plantilla)
+
+    return [r for r in results if r is not None]
 
 
 def submit_job(job_id: str, ruta_plantilla: str, ruta_examen: str, template_id: str = "") -> None:

@@ -20,6 +20,8 @@ _sem_lock = threading.Lock()
 
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 _PDF_DPI = 150
+_CHUNK_SIZE = 10   # max exams per Gemini call
+_MAX_PARALLEL = 2  # concurrent Gemini batch calls
 
 
 def _get_semaphore() -> threading.Semaphore:
@@ -27,7 +29,7 @@ def _get_semaphore() -> threading.Semaphore:
     if _semaphore is None:
         with _sem_lock:
             if _semaphore is None:
-                _semaphore = threading.Semaphore(5)
+                _semaphore = threading.Semaphore(_MAX_PARALLEL)
     return _semaphore
 
 
@@ -139,10 +141,14 @@ def start_batch(file_path: str, template_id: str, ruta_plantilla: str) -> str:
             [(batch_id, i, name) for i, (name, _) in enumerate(exam_files)],
         )
 
-    for i, (filename, exam_path) in enumerate(exam_files):
+    chunks = [
+        [(i, name, path) for i, (name, path) in enumerate(exam_files[start:start + _CHUNK_SIZE], start)]
+        for start in range(0, len(exam_files), _CHUNK_SIZE)
+    ]
+    for chunk in chunks:
         t = threading.Thread(
-            target=_process_item,
-            args=(batch_id, i, filename, ruta_plantilla, exam_path, extract_dir),
+            target=_process_chunk,
+            args=(batch_id, chunk, ruta_plantilla, extract_dir),
             daemon=True,
         )
         t.start()
@@ -150,49 +156,59 @@ def start_batch(file_path: str, template_id: str, ruta_plantilla: str) -> str:
     return batch_id
 
 
-def _process_item(
+def _store_result(batch_id: str, idx: int, result: dict) -> None:
+    needs_review = int(result.get("needs_review", False))
+    confidence = result.get("min_confidence")
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE batch_items SET status='done', result_json=?, confidence=?, needs_review=? "
+            "WHERE batch_id=? AND idx=?",
+            (json.dumps(result), confidence, needs_review, batch_id, idx),
+        )
+        conn.execute("UPDATE batches SET done=done+1 WHERE id=?", (batch_id,))
+
+
+def _store_error(batch_id: str, idx: int, error: str) -> None:
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE batch_items SET status='error', error=? WHERE batch_id=? AND idx=?",
+            (error, batch_id, idx),
+        )
+        conn.execute("UPDATE batches SET failed=failed+1 WHERE id=?", (batch_id,))
+
+
+def _process_chunk(
     batch_id: str,
-    idx: int,
-    filename: str,
+    items: list[tuple[int, str, str]],  # (idx, filename, ruta_examen)
     ruta_plantilla: str,
-    ruta_examen: str,
     extract_dir: str,
 ) -> None:
     with _get_semaphore():
         with _connect() as conn:
-            conn.execute(
-                "UPDATE batch_items SET status='processing' WHERE batch_id=? AND idx=?",
-                (batch_id, idx),
-            )
+            for idx, _, _ in items:
+                conn.execute(
+                    "UPDATE batch_items SET status='processing' WHERE batch_id=? AND idx=?",
+                    (batch_id, idx),
+                )
         try:
-            result = job_service.procesar_correccion(ruta_plantilla, ruta_examen)
-        except Exception as exc:
-            with _connect() as conn:
-                conn.execute(
-                    "UPDATE batch_items SET status='error', error=? WHERE batch_id=? AND idx=?",
-                    (str(exc), batch_id, idx),
-                )
-                conn.execute(
-                    "UPDATE batches SET failed=failed+1 WHERE id=?",
-                    (batch_id,),
-                )
-        else:
-            needs_review = int(result.get("needs_review", False))
-            confidence = result.get("min_confidence")
-            with _connect() as conn:
-                conn.execute(
-                    "UPDATE batch_items SET status='done', result_json=?, confidence=?, needs_review=? WHERE batch_id=? AND idx=?",
-                    (json.dumps(result), confidence, needs_review, batch_id, idx),
-                )
-                conn.execute(
-                    "UPDATE batches SET done=done+1 WHERE id=?",
-                    (batch_id,),
-                )
+            examen_items = [(filename, ruta) for _, filename, ruta in items]
+            results = job_service.procesar_correccion_lote(ruta_plantilla, examen_items)
+            for (idx, _, _), result in zip(items, results):
+                _store_result(batch_id, idx, result)
+        except Exception:
+            # Fallback: correct each exam individually
+            for idx, filename, ruta_examen in items:
+                try:
+                    result = job_service.procesar_correccion(ruta_plantilla, ruta_examen)
+                    _store_result(batch_id, idx, result)
+                except Exception as exc:
+                    _store_error(batch_id, idx, str(exc))
 
-    try:
-        os.remove(ruta_examen)
-    except OSError:
-        pass
+    for _, _, ruta_examen in items:
+        try:
+            os.remove(ruta_examen)
+        except OSError:
+            pass
     _check_finalize(batch_id, extract_dir)
 
 
