@@ -2,21 +2,42 @@
 **/__pycache__/
 **/*.pyc
 .env
+.env.local
+.env.*.local
 .DS_Store
+Thumbs.db
 
 .nx/cache
 .nx/workspace-data
 .nx/polygraph
 .claude/worktrees
 .claude/settings.local.json
+.codex/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Dependencies
 node_modules/
 package-lock.json
 **/*.egg-info/
+build/
+dist/
+venv/
+.venv/
+env/
+
+# Testing
+.pytest_cache/
+.tox/
+.coverage
+htmlcov/
+*.log
 
 # Build and Cache
-dist/
 .angular/
 .agents/
 .gemini/
