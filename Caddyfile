@@ -1,6 +1,8 @@
 {$DOMAIN} {
-    # Keycloak — must come before the catch-all
-    handle /keycloak/* {
+    @keycloak {
+        path /keycloak/* /realms/* /resources/* /admin/* /js/* /welcome/*
+    }
+    handle @keycloak {
         reverse_proxy keycloak:8080
     }
 
