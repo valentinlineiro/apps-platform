@@ -11,10 +11,10 @@ export GEMINI_API_KEY="your_api_key"
 docker compose up --build
 ```
 
-- Portal (Angular PWA): `http://localhost:4200`
-- Keycloak (auth): `http://localhost:8081` (admin/admin in dev)
-- Portal backend API: internal only (proxied via nginx at `/api/` and `/auth/`)
-- exam-corrector backend: internal only (proxied via nginx at `/exam-corrector/`)
+- Portal (Angular PWA): `https://localhost`
+- Keycloak (auth): `https://localhost/admin` (admin/admin in dev)
+- Portal backend API: internal only (proxied via Caddy+nginx at `/api/` and `/auth/`)
+- exam-corrector backend: internal only (proxied at `/exam-corrector/` and `/apps/exam-corrector/`)
 
 ## Architecture
 
@@ -23,27 +23,55 @@ Multi-app monorepo. Each app lives under `apps/<id>/`.
 ```
 apps/
   portal/
-    backend/                  # Flask — registry API + OAuth/OIDC auth
+    backend/                  # Flask — registry API + OAuth/OIDC auth + Postgres
     (Angular 21 PWA source)   # directory shell, routing, nginx
   exam-corrector/
     backend/                  # Flask + Gemini Vision API
     frontend/                 # Angular components for this app
   attendance-checker/
     frontend/                 # Angular components (no backend yet)
+libs/
+  platform-python-sdk/        # Shared Python SDK used by all backends
+    platform_sdk/
+      observability.py        # JSON structured logging (setup_logging, log_exception)
 ```
+
+### Infrastructure
+
+Traffic flows: **Browser → Caddy (TLS) → portal nginx → backends**.
+
+- **Caddy** (`caddy:2.7-alpine`) terminates TLS for `localhost`, routes via static `Caddyfile`:
+  - `/realms/*`, `/admin/*`, `/resources/*`, `/js/*`, `/welcome/*` → `keycloak:8080`
+  - Everything else → `portal:80`
+- **portal nginx** (`apps/portal/nginx.conf`) routes internally:
+  - `/api/*`, `/auth/*` → `portal-backend:5000`
+  - `/exam-corrector/*`, `/apps/exam-corrector/*` → `exam-corrector-backend:8000` (auth-gated)
+  - `/_auth` (internal) — subrequest to `portal-backend/auth/me`; has `client_max_body_size 0` so large uploads don't cause 413 inside `auth_request`
+- **Keycloak** v26.2.2, backed by Postgres, `KC_PROXY=edge`. Realm imported from `apps/portal/backend/keycloak/apps-platform-realm.json` on first boot only (`--import-realm` skips existing realms).
+
+> **Keycloak gotcha**: if the `postgres_data` volume predates a change to the realm JSON, the old config (e.g. stale redirect URIs) remains in the DB. Fix by updating via the admin UI or running `docker compose down -v && docker compose up --build`.
+
+### Shared SDK (`libs/platform-python-sdk/`)
+
+Mounted as a volume into both Flask containers and installed with `python setup.py develop` at startup, so edits to the SDK are picked up without rebuilding.
+
+Key functions:
+- `platform_sdk.start_registration(manifest)` — registers the app with the portal backend and starts the heartbeat loop
+- `platform_sdk.observability.setup_logging(app)` — attaches JSON structured logging to a Flask app (before/after request hooks, `request_id`, timing)
+- `platform_sdk.observability.log_exception(message)` — logs an exception with full traceback from within a request context
 
 ### App registration (heartbeat model)
 
-Apps self-register at startup by calling `POST /api/registry/register` on the portal backend, then send `POST /api/registry/heartbeat/<app_id>` every 30 seconds. The portal backend evicts apps that miss heartbeats (default TTL: 60 s). The directory page reflects the live registry.
+Apps self-register at startup via `start_registration(manifest)` from the SDK, which calls `POST /api/registry/register` and then heartbeats every 30 s. The portal evicts apps missing heartbeats (default TTL: 60 s).
 
 Adding a new app requires:
-1. In the app's backend: implement `registration_service.start()` pattern (see `apps/exam-corrector/backend/app/services/registration_service.py`) and expose `GET /apps/<id>/manifest.json`
+1. In the app's backend: call `start_registration(manifest)` (see `apps/exam-corrector/backend/app/__init__.py`)
 2. In the portal frontend: add a lazy route to `apps/portal/src/app/app.routes.ts`
-3. Add a `location /apps/<id>/` proxy block to `apps/portal/nginx.conf`
+3. Add proxy blocks to `apps/portal/nginx.conf` for the new app paths
 4. Add an entry to `apps/portal/proxy.conf.json` (dev proxy)
 5. Add the backend service to `docker-compose.yml` with `PORTAL_BACKEND_URL=http://portal-backend:5000`
 
-**Manifest v1 schema** (all string fields must be non-empty):
+**Manifest v1 schema** — all string fields must be non-empty; `route` must not be empty:
 ```json
 {
   "manifestVersion": 1,
@@ -53,14 +81,14 @@ Adding a new app requires:
   "route": "my-app",
   "icon": "🔧",
   "status": "stable | wip | disabled",
-  "backend": { "pathPrefix": "/my-app/" },   // or null
-  "scriptUrl": "/apps/my-app/element/main.js",  // required together with elementTag
+  "backend": { "pathPrefix": "/my-app/" },
+  "scriptUrl": "/apps/my-app/element/main.js",
   "elementTag": "my-app-app"
 }
 ```
 
 ### Portal backend (`apps/portal/backend/`)
-Flask app backed by SQLite (`REGISTRY_DB_PATH`, default `/tmp/portal_registry.sqlite3`).
+Flask app backed by **Postgres** in Docker (`DATABASE_URL`), SQLite fallback locally.
 
 **Key endpoints:**
 - `POST /api/registry/register` — upsert app manifest (no auth required, called by app backends)
@@ -77,7 +105,7 @@ Auth is OIDC/OAuth2 with PKCE. Keycloak is the default provider in Docker. New u
 ```bash
 cd apps/portal/backend
 pip install flask flask-cors requests
-python -m pytest tests/          # or: python -m unittest discover tests
+python -m pytest tests/
 ```
 
 ### Portal (`apps/portal/`)
@@ -87,7 +115,7 @@ Angular 21 PWA (standalone components, signals, zoneless change detection).
 - `src/app/app.routes.ts` — lazy routes; one `loadComponent` entry per app
 - `src/app/services/app-registry.service.ts` — fetches `/api/registry`, drives the directory
 - `src/app/pages/directory-page.component.ts` — renders app cards from registry
-- `nginx.conf` — reverse proxy for portal backend (`/api/`, `/auth/`) and each app backend
+- `nginx.conf` — reverse proxy for portal backend and each app backend
 - `proxy.conf.json` — dev proxy; maps `/api/`, `/auth/`, `/exam-corrector/` → local backends
 
 **Portal dev (without Docker):**
@@ -102,36 +130,66 @@ Flask + Gemini Vision API. Self-registers with portal backend on startup.
 
 **Key flows:**
 - **Async correction**: `POST /exam-corrector/start` → `job_id` → poll `GET /exam-corrector/status/<job_id>` → `GET /exam-corrector/api/result/<job_id>`
+- **Batch correction**: `POST /exam-corrector/batch/start` (ZIP of images) → `batch_id` → poll `GET /exam-corrector/batch/status/<batch_id>` → `GET /exam-corrector/batch/items/<batch_id>` / `GET /exam-corrector/batch/result/<batch_id>` (CSV)
 - **Sync correction** (legacy HTML): `POST /exam-corrector/corregir` → renders `resultado.html`
 - **Template library**: stored in `uploads/templates/`, indexed in `uploads/saved_templates.json`
 - **Template cache**: Gemini analysis cached by SHA-256 in `uploads/template_cache.json`
 - **Scoring rules**: `uploads/scoring_rules.json`, editable at `/exam-corrector/rules`
 
 **Correction pipeline** (in `app/services/`):
-1. `image_service.recorte_a4()` — OpenCV perspective-corrects the exam sheet
+1. `image_service` — OpenCV perspective-corrects the exam sheet
 2. `gemini_service` analyzes answer key → structured template model (cached)
 3. `gemini_service` analyzes student exam + template → per-question results
-4. `scoring_service` applies rules → return result dict
+4. `scoring_service` applies rules → returns result dict
 
-Jobs run in daemon threads via `job_service`/`job_store` (in-memory, lost on restart).
+Jobs and batches persist in `uploads/jobs.db` (SQLite). Batch items process concurrently via daemon threads (max 5 parallel Gemini calls via semaphore).
 
 ### exam-corrector frontend (`apps/exam-corrector/frontend/`)
-- `exam-corrector-page.component.ts` — main UI: template selection, file upload, async polling
+- `exam-corrector-page.component.ts` — main UI: template selection, file upload, async polling, batch mode
 - `services/exam-corrector-api.service.ts` — HTTP calls; uses same-origin paths (nginx proxies in prod, proxy.conf.json in dev)
 
 ## Environment
 
 **Portal backend:**
 - `PORTAL_SESSION_SECRET` — Flask session secret (default: `dev-portal-secret-change-me`)
-- `SESSION_COOKIE_SECURE` — set `true` in production (HTTPS)
+- `SESSION_COOKIE_SECURE` — set `true` in production (HTTPS); default `true` in Docker
 - `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET` — OIDC client credentials
 - `OAUTH_AUTHORIZE_URL`, `OAUTH_TOKEN_URL`, `OAUTH_USERINFO_URL` — OIDC endpoints
-- `OAUTH_REDIRECT_URI` — callback URL (default: derived from request)
+- `OAUTH_REDIRECT_URI` — callback URL (default in Docker: `https://localhost/auth/callback`)
 - `OAUTH_PROVIDER` — provider name stored on users (default: `oidc`; set to `keycloak` in Docker)
+- `OAUTH_VERIFY_SSL` — set `false` in Docker (self-signed cert from Caddy)
+- `DATABASE_URL` — Postgres connection string; falls back to SQLite if unset
 - `REGISTRY_DB_PATH` — SQLite path (default: `/tmp/portal_registry.sqlite3`)
 - `HEARTBEAT_TTL` — seconds before an app is considered stale (default: `60`)
 
 **exam-corrector backend:**
 - `GEMINI_API_KEY` — required; model hardcoded to `gemini-2.5-flash`
 - `PORTAL_BACKEND_URL` — where to register/heartbeat (default: `http://portal-backend:5000`)
+- `ALLOWED_ORIGINS` — CORS origins (default: `http://localhost:4200`)
 - Backend uploads persisted via `exam_corrector_uploads` Docker volume
+
+
+<!-- nx configuration start-->
+<!-- Leave the start & end comments to automatically receive updates. -->
+
+## General Guidelines for working with Nx
+
+- For navigating/exploring the workspace, invoke the `nx-workspace` skill first - it has patterns for querying projects, targets, and dependencies
+- When running tasks (for example build, lint, test, e2e, etc.), always prefer running the task through `nx` (i.e. `nx run`, `nx run-many`, `nx affected`) instead of using the underlying tooling directly
+- Prefix nx commands with the workspace's package manager (e.g., `pnpm nx build`, `npm exec nx test`) - avoids using globally installed CLI
+- You have access to the Nx MCP server and its tools, use them to help the user
+- For Nx plugin best practices, check `node_modules/@nx/<plugin>/PLUGIN.md`. Not all plugins have this file - proceed without it if unavailable.
+- NEVER guess CLI flags - always check nx_docs or `--help` first when unsure
+
+## Scaffolding & Generators
+
+- For scaffolding tasks (creating apps, libs, project structure, setup), ALWAYS invoke the `nx-generate` skill FIRST before exploring or calling MCP tools
+
+## When to use nx_docs
+
+- USE for: advanced config options, unfamiliar flags, migration guides, plugin configuration, edge cases
+- DON'T USE for: basic generator syntax (`nx g @nx/react:app`), standard commands, things you already know
+- The `nx-generate` skill handles generator discovery internally - don't call nx_docs just to look up generator syntax
+
+
+<!-- nx configuration end-->
