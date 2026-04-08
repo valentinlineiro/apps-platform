@@ -4,10 +4,19 @@
 .env
 .DS_Store
 
-
-
 .nx/cache
 .nx/workspace-data
 .nx/polygraph
 .claude/worktrees
 .claude/settings.local.json
+
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build and Cache
+dist/
+.angular/
+.agents/
+.gemini/
+.nx/
