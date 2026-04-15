@@ -113,10 +113,11 @@ def _ensure_db_exists() -> None:
         conn.close()
     except Exception as exc:
         # Non-fatal: _init_db() will surface a clear error if the DB is still missing
-        print(f"[portal] _ensure_db_exists warning: {exc}", flush=True)
+        app.logger.warning(f"_ensure_db_exists: {exc}")
 
 
 def _init_db() -> None:
+    app.logger.info("initializing database schema")
     with _db() as conn:
         try:
             conn.execute(
@@ -217,6 +218,7 @@ def _init_static_apps() -> None:
         return
     with open(STATIC_APPS_FILE) as f:
         manifests = json.load(f)
+    app.logger.info(f"loading {len(manifests)} static app(s) from {STATIC_APPS_FILE}")
     with _db() as conn:
         for manifest in manifests:
             conn.execute(
@@ -556,11 +558,13 @@ def auth_callback():
         verify=OAUTH_VERIFY_SSL,
     )
     if not token_response.ok:
+        app.logger.error(f"token exchange failed: {token_response.status_code} {token_response.text[:200]}")
         return jsonify({"error": "token_exchange_failed"}), 502
     token_payload = token_response.json()
     access_token = token_payload.get("access_token")
     id_token = token_payload.get("id_token")
     if not access_token:
+        app.logger.error("token response missing access_token")
         return jsonify({"error": "missing_access_token"}), 502
 
     userinfo_response = http_requests.get(
@@ -570,6 +574,7 @@ def auth_callback():
         verify=OAUTH_VERIFY_SSL,
     )
     if not userinfo_response.ok:
+        app.logger.error(f"userinfo fetch failed: {userinfo_response.status_code}")
         return jsonify({"error": "userinfo_fetch_failed"}), 502
     userinfo = userinfo_response.json()
 
@@ -577,6 +582,7 @@ def auth_callback():
     email = userinfo.get("email")
     name = userinfo.get("name") or email or str(provider_sub or "")
     if not provider_sub or not email:
+        app.logger.error(f"invalid userinfo response: sub={provider_sub!r} email={email!r}")
         return jsonify({"error": "invalid_userinfo"}), 502
 
     user_id = _upsert_user(email=email, name=name, provider=OAUTH_PROVIDER, provider_sub=provider_sub)
