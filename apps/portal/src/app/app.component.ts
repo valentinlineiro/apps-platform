@@ -1,5 +1,6 @@
-import { Component, CUSTOM_ELEMENTS_SCHEMA, OnInit, signal } from '@angular/core';
+import { Component, CUSTOM_ELEMENTS_SCHEMA, inject, OnInit, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { UserService } from './services/user.service';
 
 @Component({
   selector: 'app-root',
@@ -61,6 +62,7 @@ import { RouterOutlet } from '@angular/router';
 })
 export class AppComponent implements OnInit {
   private static readonly LOGIN_ATTEMPT_KEY = 'portal_login_attempted';
+  private userService = inject(UserService);
   checkingAuth = signal(true);
   authenticated = signal(false);
   authError = signal('');
@@ -70,6 +72,7 @@ export class AppComponent implements OnInit {
       const res = await fetch('/auth/me', { credentials: 'include' });
       if (res.ok) {
         sessionStorage.removeItem(AppComponent.LOGIN_ATTEMPT_KEY);
+        this.userService.load();
         this.authenticated.set(true);
       }
       if (res.status === 401) {

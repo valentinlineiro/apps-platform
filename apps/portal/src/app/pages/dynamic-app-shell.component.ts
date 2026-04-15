@@ -2,19 +2,22 @@ import {
   ChangeDetectionStrategy, Component,
   HostListener, inject
 } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AppRegistryService } from '../services/app-registry.service';
 import { MicroFrontendLoaderComponent } from '../components/mfe-loader.component';
 
 @Component({
   selector: 'app-dynamic-shell',
   standalone: true,
-  imports: [MicroFrontendLoaderComponent],
+  imports: [MicroFrontendLoaderComponent, RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <header class="topbar">
-      <a class="link" href="/" (click)="navigateHome($event)">Apps</a>
-      <button class="logout" type="button" (click)="logout()">Logout</button>
+      <a class="link" href="/" (click)="navigateHome($event)">← Apps</a>
+      <nav class="nav">
+        <a class="link" routerLink="/settings">Configuración</a>
+        <button class="logout" type="button" (click)="logout()">Logout</button>
+      </nav>
     </header>
     
     @if (manifest()) {
@@ -34,7 +37,9 @@ import { MicroFrontendLoaderComponent } from '../components/mfe-loader.component
       gap: 12px;
       padding: 16px 24px 0;
     }
+    .nav { display: flex; align-items: center; gap: 12px; }
     .link { color: #bbb; text-decoration: none; font-size: 14px; }
+    .link:hover { color: #e8e8e8; }
     .logout {
       border: 1px solid #333;
       background: #191919;

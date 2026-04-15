@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AppRegistryService } from '../services/app-registry.service';
+import { UserService } from '../services/user.service';
 
 @Component({
   selector: 'app-directory-page',
@@ -11,7 +12,10 @@ import { AppRegistryService } from '../services/app-registry.service';
     <main class="layout">
       <header class="topbar">
         <h1>~/apps</h1>
-        <button class="logout" type="button" (click)="logout()">Logout</button>
+        <nav class="nav">
+          <a class="nav-link" routerLink="/settings">Configuración</a>
+          <button class="logout" type="button" (click)="logout()">Logout</button>
+        </nav>
       </header>
       <p class="subtitle">Herramientas internas disponibles para tu equipo</p>
       @for (app of registry.apps(); track app.id) {
@@ -56,6 +60,9 @@ import { AppRegistryService } from '../services/app-registry.service';
     .card p { margin: 0; color: #999; font-size: 14px; }
     .badge { font-size: 10px; font-weight: 600; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 2px; text-transform: uppercase; }
     .badge-wip { background: #2a1f00; color: #f5a623; border: 1px solid #3a2d00; }
+    .nav { display: flex; align-items: center; gap: 12px; }
+    .nav-link { color: #888; text-decoration: none; font-size: 13px; }
+    .nav-link:hover { color: #ccc; }
     .logout {
       border: 1px solid #333;
       background: #191919;
@@ -67,6 +74,7 @@ import { AppRegistryService } from '../services/app-registry.service';
 })
 export class DirectoryPageComponent {
   registry = inject(AppRegistryService);
+  userSvc = inject(UserService);
 
   async logout() {
     sessionStorage.removeItem('portal_login_attempted');
