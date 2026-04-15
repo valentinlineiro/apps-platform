@@ -166,11 +166,11 @@ def corregir_con_omr(
       - Regla 1: exactly one selected → answer
       - Regla 6: exactly one cancelled + one selected → rectification (Rule 6)
       - Regla 3: multiple selected with no cancellation → MULTIPLE
-      - uncertain: falls back to Gemini for the whole exam
+      - uncertain: correction aborted (result cannot be trusted)
 
     Returns a dict compatible with _formatear_resultado, or None if:
       - alignment fails
-      - any question is uncertain (→ Gemini handles the exam)
+      - any question is uncertain
       - zero marks detected across the whole exam (→ bboxes unreliable)
     """
     preguntas = bbox_data.get("preguntas")
@@ -233,7 +233,7 @@ def corregir_con_omr(
         ):
             uncertain = uncertain or [classified[0]]  # force fallback
 
-        # ── Any uncertain option → Gemini handles this exam ───────────────
+        # ── Any uncertain option → cannot correct this exam ──────────────
         if uncertain:
             return None
 

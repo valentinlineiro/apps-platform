@@ -15,7 +15,7 @@ from app.services import job_service
 
 _log = logging.getLogger(__name__)
 
-# Limits concurrent Gemini calls across all batch items.
+# Semaphore limiting concurrent chunk-processing threads.
 # Created lazily per-process so it is always initialized in the gunicorn worker
 # process that will actually use it, avoiding fork+threading issues.
 _semaphore: threading.Semaphore | None = None
@@ -23,8 +23,8 @@ _sem_lock = threading.Lock()
 
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 _PDF_DPI = 150
-_CHUNK_SIZE = 10   # max exams per Gemini call
-_MAX_PARALLEL = 1  # concurrent Gemini batch calls (rate-limit headroom)
+_CHUNK_SIZE = 10   # exams per chunk
+_MAX_PARALLEL = 1  # concurrent chunk threads
 
 
 def _get_semaphore() -> threading.Semaphore:

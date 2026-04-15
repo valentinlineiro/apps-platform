@@ -4,10 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the project
 
-Requires a Gemini API key:
-
 ```bash
-export GEMINI_API_KEY="your_api_key"
 docker compose up --build
 ```
 
@@ -26,7 +23,7 @@ apps/
     backend/                  # Flask — registry API + OAuth/OIDC auth + Postgres
     (Angular 21 PWA source)   # directory shell, routing, nginx
   exam-corrector/
-    backend/                  # Flask + Gemini Vision API
+    backend/                  # Flask + OpenCV/OMR pipeline (no external API calls)
     frontend/                 # Angular components for this app
   attendance-checker/
     frontend/                 # Angular components (no backend yet)
@@ -126,23 +123,23 @@ cd apps/portal && npm start   # serves on :4200, proxies backend routes
 ```
 
 ### exam-corrector backend (`apps/exam-corrector/backend/`)
-Flask + Gemini Vision API. Self-registers with portal backend on startup.
+Flask + pure CV/OMR pipeline (OpenCV only, no external API calls). Self-registers with portal backend on startup.
 
 **Key flows:**
 - **Async correction**: `POST /exam-corrector/start` → `job_id` → poll `GET /exam-corrector/status/<job_id>` → `GET /exam-corrector/api/result/<job_id>`
-- **Batch correction**: `POST /exam-corrector/batch/start` (ZIP of images) → `batch_id` → poll `GET /exam-corrector/batch/status/<batch_id>` → `GET /exam-corrector/batch/items/<batch_id>` / `GET /exam-corrector/batch/result/<batch_id>` (CSV)
+- **Batch correction**: `POST /exam-corrector/batch/start` (ZIP or PDF of images) → `batch_id` → poll `GET /exam-corrector/batch/status/<batch_id>` → `GET /exam-corrector/batch/items/<batch_id>` / `GET /exam-corrector/batch/result/<batch_id>` (CSV)
 - **Sync correction** (legacy HTML): `POST /exam-corrector/corregir` → renders `resultado.html`
 - **Template library**: stored in `uploads/templates/`, indexed in `uploads/saved_templates.json`
-- **Template cache**: Gemini analysis cached by SHA-256 in `uploads/template_cache.json`
+- **Template bbox cache**: CV-detected answer grid cached by SHA-256 in `uploads/template_bbox_cache.json`
 - **Scoring rules**: `uploads/scoring_rules.json`, editable at `/exam-corrector/rules`
 
 **Correction pipeline** (in `app/services/`):
-1. `image_service` — OpenCV perspective-corrects the exam sheet
-2. `gemini_service` analyzes answer key → structured template model (cached)
-3. `gemini_service` analyzes student exam + template → per-question results
-4. `scoring_service` applies rules → returns result dict
+1. `image_service.load_and_crop` — OpenCV perspective-corrects the exam sheet to a 900×1100 canvas
+2. `image_service.detectar_bboxes_cv` — detects answer grid via contour analysis and 1D clustering (cached)
+3. `image_service.corregir_con_omr` — ECC fine-alignment + per-option ink classifier (blank/selected/cancelled/uncertain); applies Rules 1–6 including rectification (Rule 6)
+4. `scoring_service` — applies scoring rules → returns result dict
 
-Jobs and batches persist in `uploads/jobs.db` (SQLite). Batch items process concurrently via daemon threads (max 5 parallel Gemini calls via semaphore).
+Jobs and batches persist in `uploads/jobs.db` (SQLite). Batch items process concurrently via `ThreadPoolExecutor` (up to 8 parallel OMR corrections; CPU-only, no rate limits).
 
 ### exam-corrector frontend (`apps/exam-corrector/frontend/`)
 - `exam-corrector-page.component.ts` — main UI: template selection, file upload, async polling, batch mode
@@ -159,13 +156,12 @@ Jobs and batches persist in `uploads/jobs.db` (SQLite). Batch items process conc
 - `OAUTH_PROVIDER` — provider name stored on users (default: `oidc`; set to `keycloak` in Docker)
 - `OAUTH_VERIFY_SSL` — set `false` in Docker (self-signed cert from Caddy)
 - `DATABASE_URL` — Postgres connection string; falls back to SQLite if unset
-- `REGISTRY_DB_PATH` — SQLite path (default: `/tmp/portal_registry.sqlite3`)
 - `HEARTBEAT_TTL` — seconds before an app is considered stale (default: `60`)
 
 **exam-corrector backend:**
-- `GEMINI_API_KEY` — required; model hardcoded to `gemini-2.5-flash`
 - `PORTAL_BACKEND_URL` — where to register/heartbeat (default: `http://portal-backend:5000`)
 - `ALLOWED_ORIGINS` — CORS origins (default: `http://localhost:4200`)
+- `UPLOAD_MAX_AGE_SECONDS` — age before temp upload files are purged (default: `86400`)
 - Backend uploads persisted via `exam_corrector_uploads` Docker volume
 
 
