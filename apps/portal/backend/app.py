@@ -35,6 +35,8 @@ STATIC_APPS_FILE = os.environ.get(
     os.path.join(os.path.dirname(__file__), "static_apps.json"),
 )
 _PINNED_HEARTBEAT = 9_999_999_999.0  # year 2286 — static apps never expire
+DEFAULT_TENANT_ID = "default"
+DEFAULT_TENANT_NAME = "Default"
 
 # Schema tokens that differ between Postgres and SQLite
 _AUTO_PK = "SERIAL PRIMARY KEY" if DATABASE_URL else "INTEGER PRIMARY KEY AUTOINCREMENT"
@@ -200,6 +202,30 @@ def _init_db() -> None:
                 )
                 """
             )
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS tenants (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    created_at {_FLOAT} NOT NULL,
+                    updated_at {_FLOAT} NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS tenant_memberships (
+                    id {_AUTO_PK},
+                    tenant_id TEXT NOT NULL,
+                    user_id TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'member',
+                    created_at {_FLOAT} NOT NULL,
+                    UNIQUE(tenant_id, user_id),
+                    FOREIGN KEY(tenant_id) REFERENCES tenants(id),
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+                """
+            )
             conn.executemany(
                 "INSERT INTO roles(name) VALUES (?) ON CONFLICT(name) DO NOTHING",
                 [("owner",), ("admin",), ("member",), ("viewer",)],
@@ -211,6 +237,20 @@ def _init_db() -> None:
                 pass
             else:
                 raise e
+
+
+def _init_default_tenant() -> None:
+    """Ensure the default tenant exists. Idempotent."""
+    now = time.time()
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO tenants (id, name, created_at, updated_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            (DEFAULT_TENANT_ID, DEFAULT_TENANT_NAME, now, now),
+        )
 
 
 def _init_static_apps() -> None:
@@ -320,7 +360,34 @@ def _upsert_user(email: str, name: str, provider: str, provider_sub: str) -> str
             """,
             (user_id, DEFAULT_ROLE),
         )
+        conn.execute(
+            """
+            INSERT INTO tenant_memberships (tenant_id, user_id, role, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(tenant_id, user_id) DO NOTHING
+            """,
+            (DEFAULT_TENANT_ID, user_id, DEFAULT_ROLE, now),
+        )
     return user_id
+
+
+def _get_tenant_membership(user_id: str) -> dict | None:
+    """Return the user's primary tenant context, or None if not a member of any tenant."""
+    with _db() as conn:
+        row = conn.execute(
+            """
+            SELECT t.id, t.name, tm.role
+            FROM tenant_memberships tm
+            JOIN tenants t ON t.id = tm.tenant_id
+            WHERE tm.user_id = ?
+            ORDER BY t.id
+            LIMIT 1
+            """,
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return None
+    return {"id": row["id"], "name": row["name"], "role": row["role"]}
 
 
 def _get_user_roles(user_id: str) -> list[str]:
@@ -355,6 +422,7 @@ def _get_current_user() -> dict | None:
         "name": row["name"],
         "provider": row["provider"],
         "roles": _get_user_roles(row["id"]),
+        "tenant": _get_tenant_membership(row["id"]),
     }
 
 
@@ -490,6 +558,107 @@ def heartbeat(app_id: str):
 def unregister(app_id: str):
     with _db() as conn:
         conn.execute("DELETE FROM registry WHERE id = ?", (app_id,))
+    return jsonify({"ok": True})
+
+
+# ── Tenant endpoints ──────────────────────────────────────────────────────────
+
+@app.get("/api/tenants/current")
+@require_auth
+def get_current_tenant():
+    user_id = session["user_id"]
+    membership = _get_tenant_membership(user_id)
+    if not membership:
+        return jsonify({"error": "not_a_tenant_member"}), 403
+    return jsonify(membership)
+
+
+@app.get("/api/tenants/<tenant_id>/members")
+@require_auth
+def list_tenant_members(tenant_id: str):
+    user_id = session["user_id"]
+    # Only members of the tenant can list its members
+    with _db() as conn:
+        caller = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, user_id),
+        ).fetchone()
+        if not caller:
+            return jsonify({"error": "forbidden"}), 403
+        rows = conn.execute(
+            """
+            SELECT u.id, u.email, u.name, tm.role, tm.created_at
+            FROM tenant_memberships tm
+            JOIN users u ON u.id = tm.user_id
+            WHERE tm.tenant_id = ?
+            ORDER BY tm.created_at
+            """,
+            (tenant_id,),
+        ).fetchall()
+    return jsonify([
+        {"id": r["id"], "email": r["email"], "name": r["name"],
+         "role": r["role"], "joined_at": r["created_at"]}
+        for r in rows
+    ])
+
+
+@app.post("/api/tenants/<tenant_id>/members")
+@require_auth
+def add_tenant_member(tenant_id: str):
+    caller_id = session["user_id"]
+    with _db() as conn:
+        caller = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, caller_id),
+        ).fetchone()
+    if not caller or caller["role"] not in ("owner", "admin"):
+        return jsonify({"error": "forbidden"}), 403
+
+    body = request.get_json(force=True) or {}
+    email = body.get("email", "").strip()
+    role = body.get("role", DEFAULT_ROLE)
+    if not email:
+        return jsonify({"error": "email is required"}), 400
+    if role not in ("owner", "admin", "member", "viewer"):
+        return jsonify({"error": "invalid role"}), 400
+
+    with _db() as conn:
+        target = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
+        if not target:
+            return jsonify({"error": "user_not_found"}), 404
+        conn.execute(
+            """
+            INSERT INTO tenant_memberships (tenant_id, user_id, role, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(tenant_id, user_id) DO UPDATE SET role = excluded.role
+            """,
+            (tenant_id, target["id"], role, time.time()),
+        )
+    _log_audit(caller_id, "tenant_member_added", "tenant", tenant_id,
+               {"email": email, "role": role})
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/tenants/<tenant_id>/members/<user_id>")
+@require_auth
+def remove_tenant_member(tenant_id: str, user_id: str):
+    caller_id = session["user_id"]
+    with _db() as conn:
+        caller = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, caller_id),
+        ).fetchone()
+    if not caller or caller["role"] not in ("owner", "admin"):
+        return jsonify({"error": "forbidden"}), 403
+    if caller_id == user_id:
+        return jsonify({"error": "cannot remove yourself"}), 400
+
+    with _db() as conn:
+        conn.execute(
+            "DELETE FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, user_id),
+        )
+    _log_audit(caller_id, "tenant_member_removed", "tenant", tenant_id, {"user_id": user_id})
     return jsonify({"ok": True})
 
 
@@ -637,11 +806,13 @@ def auth_me():
 if __name__ == "__main__":
     _ensure_db_exists()
     _init_db()
+    _init_default_tenant()
     _init_static_apps()
     app.run(host="0.0.0.0", port=5000)
 
 
 _ensure_db_exists()
 _init_db()
+_init_default_tenant()
 _init_static_apps()
 
