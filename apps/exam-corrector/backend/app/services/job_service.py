@@ -1,4 +1,4 @@
-import json
+import logging
 import os
 import threading
 import time
@@ -7,18 +7,19 @@ from typing import Optional
 
 from concurrent.futures import ThreadPoolExecutor
 
-import requests
-
 from app import config
 from app.models.job import Job
-from app.services.image_service import load_and_crop, encode_for_gemini
-from app.services.gemini_service import obtener_modelo_plantilla, llamar_gemini, PROMPT_CORRECCION_DESDE_MODELO
+from app.services.image_service import (
+    load_and_crop, hash_image, corregir_con_omr, detectar_bboxes_cv,
+)
 from app.services.scoring_service import (
     cargar_reglas_evaluacion, aplicar_reglas_puntuacion,
     normalizar_tipo_examen, reglas_por_defecto,
 )
 from app.services.job_store import JobStore
+from app.services import template_service
 
+_log = logging.getLogger(__name__)
 _store: Optional[JobStore] = None
 
 
@@ -37,7 +38,7 @@ def cleanup_old_uploads() -> None:
     """Delete temp upload files older than UPLOAD_MAX_AGE_SECONDS; keep library/config files."""
     cutoff = time.time() - config.UPLOAD_MAX_AGE_SECONDS
     protected = {
-        "template_cache.json", "saved_templates.json",
+        "template_bbox_cache.json", "saved_templates.json",
         "scoring_rules.json", "jobs.db", "jobs.db-wal", "jobs.db-shm",
     }
     for fname in os.listdir(config.UPLOAD_FOLDER):
@@ -79,9 +80,30 @@ def actualizar_progreso(job_id: str, progress: int, stage: str, message: str) ->
     )
 
 
+def _obtener_bboxes_cv(plantilla_a4, template_hash: str) -> dict | None:
+    """Return CV-detected bboxes for the template, using the in-memory cache."""
+    with template_service.BBOX_CACHE_LOCK:
+        cached = template_service.BBOX_CACHE.get(template_hash)
+    if cached:
+        return cached
+
+    _log.info("detectando zonas de respuesta en plantilla (CV)...")
+    result = detectar_bboxes_cv(plantilla_a4)
+    if result is None:
+        _log.warning("detectar_bboxes_cv: no se encontró cuadrícula de respuestas")
+        return None
+
+    n_q = len(result.get("preguntas", []))
+    _log.info(f"detectar_bboxes_cv: {n_q} preguntas detectadas")
+    with template_service.BBOX_CACHE_LOCK:
+        template_service.BBOX_CACHE[template_hash] = result
+        template_service.guardar_bbox_cache()
+    return result
+
+
 def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None) -> dict:
     if progress_cb:
-        progress_cb(8, "loading", "Leyendo y preparando imágenes en paralelo...")
+        progress_cb(8, "loading", "Leyendo imágenes...")
     try:
         with ThreadPoolExecutor(max_workers=2) as ex:
             fut_p = ex.submit(load_and_crop, ruta_plantilla)
@@ -91,48 +113,38 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
     except ValueError as e:
         return _resultado_error(str(e))
 
+    if progress_cb:
+        progress_cb(28, "template-analyze", "Analizando plantilla...")
     try:
-        if progress_cb:
-            progress_cb(28, "encode", "Codificando imágenes...")
-        with ThreadPoolExecutor(max_workers=2) as ex:
-            fut_bp = ex.submit(encode_for_gemini, plantilla_a4)
-            fut_be = ex.submit(encode_for_gemini, examen_a4)
-            b64_p, template_hash = fut_bp.result()
-            b64_e, _ = fut_be.result()
-        modelo_plantilla = obtener_modelo_plantilla(b64_p, template_hash, progress_cb=progress_cb)
-    except requests.HTTPError as e:
-        return _resultado_error(f"Error en la API de Gemini: {e}")
-    except (ValueError, KeyError) as e:
-        return _resultado_error(f"No se pudo parsear la respuesta de Gemini: {e}")
+        template_hash = hash_image(plantilla_a4)
+    except ValueError as e:
+        return _resultado_error(str(e))
 
-    try:
-        if progress_cb:
-            progress_cb(62, "grading", "Corrigiendo examen...")
-        prompt = PROMPT_CORRECCION_DESDE_MODELO.replace(
-            "__TEMPLATE_MODEL__",
-            json.dumps(modelo_plantilla, ensure_ascii=False),
+    bbox_data = _obtener_bboxes_cv(plantilla_a4, template_hash)
+    if bbox_data is None:
+        return _resultado_error(
+            "No se pudo detectar la cuadrícula de respuestas en la plantilla. "
+            "Compruebe que sea una imagen clara de un examen tipo test."
         )
-        result = llamar_gemini(
-            parts=[{"inline_data": {"mime_type": "image/jpeg", "data": b64_e}}],
-            prompt=prompt,
-            timeout=90,
-        )
-    except requests.HTTPError as e:
-        return _resultado_error(f"Error en la API de Gemini: {e}")
-    except (ValueError, KeyError) as e:
-        return _resultado_error(f"No se pudo parsear la respuesta de Gemini: {e}")
-
-    if not bool(result.get("compatible", False)):
-        motivo = result.get("motivo", "La plantilla no coincide con el examen.")
-        try:
-            conf = float(result.get("confianza", 0.0))
-        except (TypeError, ValueError):
-            conf = 0.0
-        return _resultado_error(f"Plantilla incompatible (confianza {conf:.2f}). {motivo}")
 
     if progress_cb:
+        progress_cb(62, "grading", "Corrigiendo examen (OMR)...")
+    try:
+        omr_result = corregir_con_omr(plantilla_a4, examen_a4, bbox_data)
+    except Exception as exc:
+        _log.warning(f"corregir_con_omr error: {exc}")
+        omr_result = None
+
+    if omr_result is None:
+        return _resultado_error(
+            "No se pudo corregir el examen automáticamente. "
+            "La alineación o la detección de marcas falló."
+        )
+
+    _log.info(f"procesar_correccion: OMR ok (ecc={omr_result.get('confianza')})")
+    if progress_cb:
         progress_cb(82, "formatting", "Preparando informe...")
-    formatted = _formatear_resultado(result, modelo_plantilla)
+    formatted = _formatear_resultado(omr_result)
     if progress_cb:
         progress_cb(96, "finalizing", "Finalizando resultado...")
     return formatted
@@ -141,8 +153,8 @@ def procesar_correccion(ruta_plantilla: str, ruta_examen: str, progress_cb=None)
 _CONFIDENCE_THRESHOLD = 0.80
 
 
-def _formatear_resultado(result: dict, modelo_plantilla: dict) -> dict:
-    """Convert a raw Gemini correction response into the final result dict."""
+def _formatear_resultado(result: dict) -> dict:
+    """Convert an OMR correction result into the final result dict."""
     respuestas = result.get("respuestas", [])
     feedback = []
     for r in respuestas:
@@ -159,7 +171,7 @@ def _formatear_resultado(result: dict, modelo_plantilla: dict) -> dict:
             "respuesta_correcta": resp_correcta,
             "respuesta_dada": resp_dada,
             "similitud": 1.0 if correcta else 0.0,
-            "detalle_opciones": r.get("regla_aplicada", "Regla no indicada"),
+            "detalle_opciones": r.get("regla_aplicada", "OMR"),
             "estado": "Correcta" if correcta else "Incorrecta",
             "correcta": correcta,
             "confianza": round(confianza, 3),
@@ -168,10 +180,10 @@ def _formatear_resultado(result: dict, modelo_plantilla: dict) -> dict:
         })
 
     puntaje = sum(1 for f in feedback if f["correcta"])
-    total = result.get("total", modelo_plantilla.get("total", len(feedback)))
+    total = result.get("total", len(feedback))
     porcentaje = (puntaje / total * 100) if total else 0
-    nombre = result.get("nombre", "Alumno desconocido")
-    warning = "" if feedback else "Gemini no detectó respuestas en las imágenes."
+    nombre = result.get("nombre") or "Alumno desconocido"
+    warning = "" if feedback else "OMR no detectó respuestas en las imágenes."
     min_confidence = min((f["confianza"] for f in feedback), default=1.0)
     needs_review = min_confidence < _CONFIDENCE_THRESHOLD
     tipo_examen = normalizar_tipo_examen(result.get("tipo_examen", "test"))
@@ -201,50 +213,54 @@ def procesar_correccion_lote(
     ruta_plantilla: str,
     examen_items: list[tuple[str, str]],  # (filename, ruta_examen)
 ) -> list[dict]:
-    """Correct up to BATCH_SIZE exams in one Gemini call. Returns results in input order."""
-    from app.services.gemini_service import llamar_gemini_lote, obtener_modelo_plantilla, BATCH_SIZE
+    """Correct a batch of exams using CV-only OMR (no network calls)."""
 
-    # Load and encode plantilla
-    with ThreadPoolExecutor(max_workers=1) as ex:
-        plantilla_a4 = ex.submit(load_and_crop, ruta_plantilla).result()
-    b64_p, template_hash = encode_for_gemini(plantilla_a4)
-    modelo_plantilla = obtener_modelo_plantilla(b64_p, template_hash)
+    plantilla_a4 = load_and_crop(ruta_plantilla)
+    template_hash = hash_image(plantilla_a4)
+    bbox_data = _obtener_bboxes_cv(plantilla_a4, template_hash)
 
-    # Load and encode all exam images in parallel
-    def _load_exam(item: tuple[str, str]) -> tuple[str, str]:
+    if bbox_data is None:
+        err = _resultado_error(
+            "No se pudo detectar la cuadrícula de respuestas en la plantilla."
+        )
+        return [err] * len(examen_items)
+
+    # Load all student images in parallel
+    def _load_exam(item: tuple[str, str]) -> tuple[str, object]:
         filename, ruta = item
         try:
-            img = load_and_crop(ruta)
-            b64, _ = encode_for_gemini(img)
-            return filename, b64
-        except ValueError:
-            return filename, ""
+            return filename, load_and_crop(ruta)
+        except Exception:
+            return filename, None
 
-    with ThreadPoolExecutor(max_workers=min(len(examen_items), BATCH_SIZE)) as ex:
-        encoded = list(ex.map(_load_exam, examen_items))
+    with ThreadPoolExecutor(max_workers=min(len(examen_items), 8)) as ex:
+        loaded = list(ex.map(_load_exam, examen_items))
 
-    # Separate items that failed image loading
-    good: list[tuple[int, str, str]] = []   # (original_idx, filename, b64)
-    bad_indices: set[int] = set()
-    for orig_idx, (filename, b64) in enumerate(encoded):
-        if b64:
-            good.append((orig_idx, filename, b64))
-        else:
-            bad_indices.add(orig_idx)
+    # Correct each exam via OMR (CPU-only, safe to run in parallel)
+    def _correct_one(filename: str, img) -> dict:
+        if img is None:
+            return _resultado_error("No se pudo leer la imagen del examen.")
+        try:
+            omr_result = corregir_con_omr(plantilla_a4, img, bbox_data)
+        except Exception as exc:
+            return _resultado_error(f"Error OMR: {exc}")
+        if omr_result is None:
+            return _resultado_error(
+                "OMR no pudo determinar las respuestas del alumno. "
+                "Compruebe que el examen esté bien enfocado y alineado."
+            )
+        return _formatear_resultado(omr_result)
 
-    results: list[dict | None] = [None] * len(examen_items)
+    with ThreadPoolExecutor(max_workers=min(len(loaded), 8)) as ex:
+        results = list(ex.map(lambda t: _correct_one(*t), loaded))
 
-    # Fill errors for failed image loads
-    for i in bad_indices:
-        results[i] = _resultado_error("No se pudo leer la imagen del examen.")
-
-    if good:
-        images = [(filename, b64) for _, filename, b64 in good]
-        raw_list = llamar_gemini_lote(images, modelo_plantilla)
-        for (orig_idx, _, _), raw in zip(good, raw_list):
-            results[orig_idx] = _formatear_resultado(raw, modelo_plantilla)
-
-    return [r for r in results if r is not None]
+    n_ok = sum(1 for r in results if not r.get("warning"))
+    n_err = len(results) - n_ok
+    _log.info(
+        f"procesar_correccion_lote: {len(examen_items)} exams — "
+        f"{n_ok} OMR ok, {n_err} failed"
+    )
+    return results
 
 
 def submit_job(job_id: str, ruta_plantilla: str, ruta_examen: str, template_id: str = "") -> None:

@@ -187,43 +187,6 @@ const POLL_INTERVAL_MS = 1500;
         </section>
       }
 
-      <section class="panel">
-        <h2 class="section-title">Ajustes</h2>
-
-        <label>Gemini API Key</label>
-        @if (settingsResource.isLoading()) {
-          <p class="status">Cargando...</p>
-        } @else {
-          @if (settingsResource.value()?.source !== 'none') {
-            <p class="key-status">
-              Clave activa
-              @if (settingsResource.value()?.source === 'env') {
-                (variable de entorno)
-              }
-              : <code>{{ settingsResource.value()?.masked }}</code>
-            </p>
-          } @else {
-            <p class="key-status warn">Sin API key configurada.</p>
-          }
-          <input
-            type="password"
-            [ngModel]="newApiKey()"
-            (ngModelChange)="newApiKey.set($event)"
-            name="gemini_key"
-            placeholder="AIza..."
-            autocomplete="off"
-          />
-          <div class="key-actions">
-            <button type="button" (click)="saveKey()" [disabled]="!newApiKey()">Guardar clave</button>
-            @if (settingsResource.value()?.source === 'custom') {
-              <button type="button" class="danger" (click)="clearKey()">Eliminar clave guardada</button>
-            }
-          </div>
-          @if (settingsError()) {
-            <p class="warn">{{ settingsError() }}</p>
-          }
-        }
-      </section>
     </main>
   `,
   styles: [`
@@ -241,10 +204,6 @@ const POLL_INTERVAL_MS = 1500;
     th, td { border-bottom: 1px solid #333; text-align: left; padding: 8px; font-size: 13px; }
     .section-title { margin: 0; font-size: 16px; font-weight: 600; }
     .download-btn { display: inline-block; margin-top: 12px; padding: 10px 16px; background: #1a3a2a; border: 1px solid #2a5a3a; color: #5a9; text-decoration: none; font-size: 13px; }
-    .key-status { font-size: 13px; color: #aaa; margin: 0; }
-    code { font-family: monospace; color: #ccc; }
-    .key-actions { display: flex; gap: 8px; }
-    button.danger { border-color: #5a2a2a; color: #f88; }
     .current-item { font-size: 13px; color: #aaa; margin-top: 8px; }
     .batch-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     .batch-table th, .batch-table td { border-bottom: 1px solid #333; text-align: left; padding: 8px; font-size: 13px; }
@@ -322,13 +281,6 @@ export class ExamCorrectorPageComponent {
   templatesResource = resource({
     loader: () => this.api.listTemplates().then(r => r.templates ?? [])
   });
-
-  settingsResource = resource({
-    loader: () => this.api.getSettings()
-  });
-
-  newApiKey = signal('');
-  settingsError = signal('');
 
   batchResultUrl(): string {
     return this.api.batchResultUrl(this.batchId());
@@ -448,18 +400,6 @@ export class ExamCorrectorPageComponent {
     }
   }
 
-  async saveKey() {
-    this.settingsError.set('');
-    try {
-      const res = await this.api.setGeminiKey(this.newApiKey());
-      if (!res.ok) { this.settingsError.set(res.error || 'Error al guardar.'); return; }
-      this.newApiKey.set('');
-      this.settingsResource.reload();
-    } catch {
-      this.settingsError.set('Error al guardar la clave.');
-    }
-  }
-
   async markReviewed(idx: number) {
     await this.api.markReviewed(this.batchId(), idx);
     this.reviewItems.update(items => items.map(i => i.idx === idx ? { ...i, reviewed: true } : i));
@@ -468,16 +408,6 @@ export class ExamCorrectorPageComponent {
 
   toggleReview(idx: number) {
     this.expandedReviewIdx.update(cur => cur === idx ? null : idx);
-  }
-
-  async clearKey() {
-    this.settingsError.set('');
-    try {
-      await this.api.clearGeminiKey();
-      this.settingsResource.reload();
-    } catch {
-      this.settingsError.set('Error al eliminar la clave.');
-    }
   }
 
   async pollBatch(batchId: string) {

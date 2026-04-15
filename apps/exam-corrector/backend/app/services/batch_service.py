@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import logging
 import os
 import shutil
 import sqlite3
@@ -12,6 +13,8 @@ import zipfile
 from app import config
 from app.services import job_service
 
+_log = logging.getLogger(__name__)
+
 # Limits concurrent Gemini calls across all batch items.
 # Created lazily per-process so it is always initialized in the gunicorn worker
 # process that will actually use it, avoiding fork+threading issues.
@@ -21,7 +24,7 @@ _sem_lock = threading.Lock()
 _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 _PDF_DPI = 150
 _CHUNK_SIZE = 10   # max exams per Gemini call
-_MAX_PARALLEL = 2  # concurrent Gemini batch calls
+_MAX_PARALLEL = 1  # concurrent Gemini batch calls (rate-limit headroom)
 
 
 def _get_semaphore() -> threading.Semaphore:
@@ -67,6 +70,16 @@ def init_tables() -> None:
                 PRIMARY KEY (batch_id, idx)
             )
         """)
+        # Migrations: add columns that may be missing from older databases
+        for stmt in [
+            "ALTER TABLE batch_items ADD COLUMN confidence REAL",
+            "ALTER TABLE batch_items ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE batch_items ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0",
+        ]:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass  # column already exists
 
 
 def _extract_from_zip(zip_path: str, extract_dir: str) -> list[tuple[str, str]]:
@@ -107,6 +120,29 @@ def _extract_from_pdf(pdf_path: str, extract_dir: str) -> list[tuple[str, str]]:
     return exam_files
 
 
+def _prewarm_template(ruta_plantilla: str, ready: threading.Event) -> None:
+    """Detect and cache the answer grid for *ruta_plantilla* before chunk threads
+    start, so every chunk gets an immediate cache hit.  Runs as a daemon thread;
+    sets *ready* when done (or on failure)."""
+    try:
+        from app.services import job_service
+        from app.services.image_service import load_and_crop, hash_image
+
+        _log.info("batch prewarm: loading template image")
+        img = load_and_crop(ruta_plantilla)
+        h = hash_image(img)
+        bboxes = job_service._obtener_bboxes_cv(img, h)
+        n_q = len(bboxes.get("preguntas", [])) if bboxes else 0
+        if bboxes:
+            _log.info(f"batch prewarm: {n_q} questions detected, OMR ready")
+        else:
+            _log.warning("batch prewarm: answer grid not detected — corrections will fail")
+    except Exception as exc:
+        _log.warning(f"batch prewarm: failed ({exc})")
+    finally:
+        ready.set()
+
+
 def start_batch(file_path: str, template_id: str, ruta_plantilla: str) -> str:
     batch_id = str(uuid.uuid4())
     extract_dir = os.path.join(config.UPLOAD_FOLDER, f"batch_{batch_id}")
@@ -141,6 +177,18 @@ def start_batch(file_path: str, template_id: str, ruta_plantilla: str) -> str:
             [(batch_id, i, name) for i, (name, _) in enumerate(exam_files)],
         )
 
+    _log.info(f"batch {batch_id[:8]}: starting — {total} exams, "
+              f"{(total + _CHUNK_SIZE - 1) // _CHUNK_SIZE} chunks of ≤{_CHUNK_SIZE}")
+
+    # Pre-warm template caches in a dedicated thread.  Chunk threads wait on
+    # this event so only one Gemini template-analysis call is ever made.
+    template_ready = threading.Event()
+    threading.Thread(
+        target=_prewarm_template,
+        args=(ruta_plantilla, template_ready),
+        daemon=True,
+    ).start()
+
     chunks = [
         [(i, name, path) for i, (name, path) in enumerate(exam_files[start:start + _CHUNK_SIZE], start)]
         for start in range(0, len(exam_files), _CHUNK_SIZE)
@@ -148,7 +196,7 @@ def start_batch(file_path: str, template_id: str, ruta_plantilla: str) -> str:
     for chunk in chunks:
         t = threading.Thread(
             target=_process_chunk,
-            args=(batch_id, chunk, ruta_plantilla, extract_dir),
+            args=(batch_id, chunk, ruta_plantilla, extract_dir, template_ready),
             daemon=True,
         )
         t.start()
@@ -182,8 +230,17 @@ def _process_chunk(
     items: list[tuple[int, str, str]],  # (idx, filename, ruta_examen)
     ruta_plantilla: str,
     extract_dir: str,
+    template_ready: threading.Event | None = None,
 ) -> None:
+    first_idx = items[0][0] if items else "?"
+    tag = f"batch {batch_id[:8]} chunk@{first_idx}"
+
+    # Wait for template pre-warm (up to 120 s) before competing for the semaphore.
+    if template_ready is not None:
+        template_ready.wait(timeout=120)
+
     with _get_semaphore():
+        _log.info(f"{tag}: acquired semaphore, processing {len(items)} items")
         with _connect() as conn:
             for idx, _, _ in items:
                 conn.execute(
@@ -193,16 +250,24 @@ def _process_chunk(
         try:
             examen_items = [(filename, ruta) for _, filename, ruta in items]
             results = job_service.procesar_correccion_lote(ruta_plantilla, examen_items)
+            if len(results) != len(items):
+                raise ValueError(
+                    f"batch result length mismatch: expected {len(items)}, got {len(results)}"
+                )
             for (idx, _, _), result in zip(items, results):
                 _store_result(batch_id, idx, result)
-        except Exception:
+            _log.info(f"{tag}: batch done — all {len(items)} items stored")
+        except Exception as exc:
+            _log.warning(f"{tag}: batch call failed ({exc}), falling back to individual corrections")
             # Fallback: correct each exam individually
             for idx, filename, ruta_examen in items:
                 try:
+                    _log.info(f"{tag}: correcting item {idx} ({filename}) individually")
                     result = job_service.procesar_correccion(ruta_plantilla, ruta_examen)
                     _store_result(batch_id, idx, result)
-                except Exception as exc:
-                    _store_error(batch_id, idx, str(exc))
+                except Exception as exc2:
+                    _log.error(f"{tag}: item {idx} failed — {exc2}")
+                    _store_error(batch_id, idx, str(exc2))
 
     for _, _, ruta_examen in items:
         try:

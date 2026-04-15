@@ -9,6 +9,29 @@ from app import config
 TEMPLATE_CACHE: dict = {}
 TEMPLATE_CACHE_LOCK = threading.Lock()
 
+BBOX_CACHE: dict = {}
+BBOX_CACHE_LOCK = threading.Lock()
+
+
+def cargar_bbox_cache() -> None:
+    global BBOX_CACHE
+    if not os.path.exists(config.TEMPLATE_BBOX_CACHE_PATH):
+        BBOX_CACHE = {}
+        return
+    try:
+        with open(config.TEMPLATE_BBOX_CACHE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        BBOX_CACHE = data if isinstance(data, dict) else {}
+    except Exception:
+        BBOX_CACHE = {}
+
+
+def guardar_bbox_cache() -> None:
+    tmp = config.TEMPLATE_BBOX_CACHE_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(BBOX_CACHE, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, config.TEMPLATE_BBOX_CACHE_PATH)
+
 
 def cargar_template_cache() -> None:
     global TEMPLATE_CACHE

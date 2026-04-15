@@ -28,7 +28,7 @@ def create_app() -> Flask:
     from app.services import batch_service
     batch_service.init_tables()
 
-    template_service.cargar_template_cache()
+    template_service.cargar_bbox_cache()
 
     from app.routes import correction, legacy, templates, rules, manifest, batch, settings
     app.register_blueprint(correction.bp)

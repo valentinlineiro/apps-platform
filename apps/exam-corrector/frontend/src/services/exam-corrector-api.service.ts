@@ -43,31 +43,6 @@ export class ExamCorrectorApiService {
     );
   }
 
-  getSettings() {
-    return firstValueFrom(
-      this.http.get<{ ok: boolean; source: string; masked: string }>(
-        '/exam-corrector/api/settings'
-      )
-    );
-  }
-
-  setGeminiKey(key: string) {
-    return firstValueFrom(
-      this.http.put<{ ok: boolean; source: string; masked: string; error?: string }>(
-        '/exam-corrector/api/settings/gemini-key',
-        { key }
-      )
-    );
-  }
-
-  clearGeminiKey() {
-    return firstValueFrom(
-      this.http.delete<{ ok: boolean; source: string; masked: string }>(
-        '/exam-corrector/api/settings/gemini-key'
-      )
-    );
-  }
-
   startBatch(formData: FormData) {
     return firstValueFrom(
       this.http.post<{ ok: boolean; batch_id: string; error?: string }>(
@@ -87,6 +62,7 @@ export class ExamCorrectorApiService {
         finished: boolean;
         progress: number;
         current_item: string | null;
+        needs_review: number;
         error?: string;
       }>(`/exam-corrector/batch/status/${batchId}`)
     );
@@ -103,6 +79,9 @@ export class ExamCorrectorApiService {
           total_puntos?: number;
           max_puntos?: number;
           porcentaje_puntos?: number;
+          confidence?: number;
+          needs_review?: boolean;
+          reviewed?: boolean;
           error?: string;
         }>;
       }>(`/exam-corrector/batch/items/${batchId}`)
