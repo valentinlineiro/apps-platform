@@ -226,6 +226,20 @@ def _init_db() -> None:
                 )
                 """
             )
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS plugin_installs (
+                    id {_AUTO_PK},
+                    tenant_id TEXT NOT NULL,
+                    plugin_id TEXT NOT NULL,
+                    installed_at {_FLOAT} NOT NULL,
+                    installed_by TEXT,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    UNIQUE(tenant_id, plugin_id),
+                    FOREIGN KEY(tenant_id) REFERENCES tenants(id)
+                )
+                """
+            )
             conn.executemany(
                 "INSERT INTO roles(name) VALUES (?) ON CONFLICT(name) DO NOTHING",
                 [("owner",), ("admin",), ("member",), ("viewer",)],
@@ -253,6 +267,18 @@ def _init_default_tenant() -> None:
         )
 
 
+def _install_plugin(conn, tenant_id: str, plugin_id: str, installed_by: str | None = None) -> None:
+    """Upsert a plugin install for a tenant. No-op if already active."""
+    conn.execute(
+        """
+        INSERT INTO plugin_installs (tenant_id, plugin_id, installed_at, installed_by, status)
+        VALUES (?, ?, ?, ?, 'active')
+        ON CONFLICT(tenant_id, plugin_id) DO NOTHING
+        """,
+        (tenant_id, plugin_id, time.time(), installed_by),
+    )
+
+
 def _init_static_apps() -> None:
     if not os.path.exists(STATIC_APPS_FILE):
         return
@@ -271,14 +297,25 @@ def _init_static_apps() -> None:
                 """,
                 (manifest["id"], json.dumps(manifest), _PINNED_HEARTBEAT),
             )
+            # Auto-install non-disabled static apps into the default tenant
+            if manifest.get("status") != "disabled":
+                _install_plugin(conn, DEFAULT_TENANT_ID, manifest["id"])
 
 
-def _active() -> list[dict]:
+def _active(tenant_id: str) -> list[dict]:
+    """Return apps that are alive in the heartbeat store AND installed for the given tenant."""
     cutoff = time.time() - HEARTBEAT_TTL
     with _db() as conn:
         rows = conn.execute(
-            "SELECT manifest_json, last_heartbeat FROM registry WHERE last_heartbeat >= ?",
-            (cutoff,),
+            """
+            SELECT r.manifest_json, r.last_heartbeat
+            FROM registry r
+            JOIN plugin_installs pi ON pi.plugin_id = r.id
+            WHERE r.last_heartbeat >= ?
+              AND pi.tenant_id = ?
+              AND pi.status = 'active'
+            """,
+            (cutoff, tenant_id),
         ).fetchall()
 
     active_apps: list[dict] = []
@@ -509,7 +546,10 @@ def _validate_manifest(data: object) -> tuple[dict, dict[str, str], int | None]:
 @app.get("/api/registry")
 @require_auth
 def get_registry():
-    return jsonify(_active())
+    membership = _get_tenant_membership(session["user_id"])
+    if not membership:
+        return jsonify([])
+    return jsonify(_active(membership["id"]))
 
 
 @app.post("/api/registry/register")
@@ -538,6 +578,8 @@ def register():
             """,
             (manifest["id"], json.dumps(manifest), now),
         )
+        # Auto-install into default tenant on first registration
+        _install_plugin(conn, DEFAULT_TENANT_ID, manifest["id"])
     return jsonify({"ok": True})
 
 
@@ -659,6 +701,128 @@ def remove_tenant_member(tenant_id: str, user_id: str):
             (tenant_id, user_id),
         )
     _log_audit(caller_id, "tenant_member_removed", "tenant", tenant_id, {"user_id": user_id})
+    return jsonify({"ok": True})
+
+
+# ── Plugin install endpoints ──────────────────────────────────────────────────
+
+@app.get("/api/tenants/<tenant_id>/installs")
+@require_auth
+def list_installs(tenant_id: str):
+    user_id = session["user_id"]
+    with _db() as conn:
+        member = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, user_id),
+        ).fetchone()
+        if not member:
+            return jsonify({"error": "forbidden"}), 403
+        rows = conn.execute(
+            """
+            SELECT pi.plugin_id, pi.status, pi.installed_at, pi.installed_by,
+                   r.manifest_json, r.last_heartbeat
+            FROM plugin_installs pi
+            LEFT JOIN registry r ON r.id = pi.plugin_id
+            WHERE pi.tenant_id = ?
+            ORDER BY pi.installed_at
+            """,
+            (tenant_id,),
+        ).fetchall()
+
+    cutoff = time.time() - HEARTBEAT_TTL
+    result = []
+    for row in rows:
+        manifest = json.loads(row["manifest_json"]) if row["manifest_json"] else {}
+        result.append({
+            "plugin_id": row["plugin_id"],
+            "status": row["status"],
+            "installed_at": row["installed_at"],
+            "installed_by": row["installed_by"],
+            "alive": row["last_heartbeat"] is not None and row["last_heartbeat"] >= cutoff,
+            "manifest": manifest,
+        })
+    return jsonify(result)
+
+
+@app.post("/api/tenants/<tenant_id>/installs")
+@require_auth
+def install_plugin(tenant_id: str):
+    caller_id = session["user_id"]
+    with _db() as conn:
+        caller = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, caller_id),
+        ).fetchone()
+    if not caller or caller["role"] not in ("owner", "admin"):
+        return jsonify({"error": "forbidden"}), 403
+
+    body = request.get_json(force=True) or {}
+    plugin_id = (body.get("plugin_id") or "").strip()
+    if not plugin_id:
+        return jsonify({"error": "plugin_id is required"}), 400
+
+    with _db() as conn:
+        exists = conn.execute(
+            "SELECT id FROM registry WHERE id = ?", (plugin_id,)
+        ).fetchone()
+        if not exists:
+            return jsonify({"error": "plugin_not_found"}), 404
+        _install_plugin(conn, tenant_id, plugin_id, installed_by=caller_id)
+
+    _log_audit(caller_id, "plugin_installed", "plugin_install", plugin_id,
+               {"tenant_id": tenant_id})
+    return jsonify({"ok": True})
+
+
+@app.patch("/api/tenants/<tenant_id>/installs/<plugin_id>")
+@require_auth
+def update_install(tenant_id: str, plugin_id: str):
+    caller_id = session["user_id"]
+    with _db() as conn:
+        caller = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, caller_id),
+        ).fetchone()
+    if not caller or caller["role"] not in ("owner", "admin"):
+        return jsonify({"error": "forbidden"}), 403
+
+    body = request.get_json(force=True) or {}
+    new_status = body.get("status", "").strip()
+    if new_status not in ("active", "suspended", "trial"):
+        return jsonify({"error": "status must be active, suspended, or trial"}), 400
+
+    with _db() as conn:
+        result = conn.execute(
+            "UPDATE plugin_installs SET status = ? WHERE tenant_id = ? AND plugin_id = ?",
+            (new_status, tenant_id, plugin_id),
+        )
+    if result.rowcount == 0:
+        return jsonify({"error": "install_not_found"}), 404
+
+    _log_audit(caller_id, "plugin_install_updated", "plugin_install", plugin_id,
+               {"tenant_id": tenant_id, "status": new_status})
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/tenants/<tenant_id>/installs/<plugin_id>")
+@require_auth
+def uninstall_plugin(tenant_id: str, plugin_id: str):
+    caller_id = session["user_id"]
+    with _db() as conn:
+        caller = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, caller_id),
+        ).fetchone()
+    if not caller or caller["role"] not in ("owner", "admin"):
+        return jsonify({"error": "forbidden"}), 403
+
+    with _db() as conn:
+        conn.execute(
+            "DELETE FROM plugin_installs WHERE tenant_id = ? AND plugin_id = ?",
+            (tenant_id, plugin_id),
+        )
+    _log_audit(caller_id, "plugin_uninstalled", "plugin_install", plugin_id,
+               {"tenant_id": tenant_id})
     return jsonify({"ok": True})
 
 
