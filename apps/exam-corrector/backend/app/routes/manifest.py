@@ -12,7 +12,7 @@ def manifest():
         "manifestVersion": 1,
         "id": "exam-corrector",
         "name": "exam-corrector",
-        "description": "Corrección automática de exámenes con Gemini Vision",
+        "description": "Corrección automática de exámenes tipo test con detección óptica de marcas",
         "route": "exam-corrector",
         "icon": "📝",
         "status": "stable",

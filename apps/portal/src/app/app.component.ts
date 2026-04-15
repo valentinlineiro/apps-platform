@@ -8,30 +8,55 @@ import { RouterOutlet } from '@angular/router';
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   template: `
     @if (checkingAuth()) {
-      <p class="status">Checking session...</p>
+      <p class="gate">Verificando sesión...</p>
     } @else if (!authenticated()) {
-      <main class="status">
-        <p>Not logged in.</p>
-        <a class="retry" [href]="loginHref()">Login</a>
+      <main class="gate-card">
+        <h1 class="gate-title">~/apps</h1>
+        <p class="gate-sub">Portal de herramientas internas. Necesitas una cuenta para continuar.</p>
+        <a class="login-btn" [href]="loginHref()">Iniciar sesión</a>
       </main>
     } @else if (authError()) {
-      <main class="status">
-        <p>{{ authError() }}</p>
-        <a class="retry" href="/auth/login?next=%2F">Retry login</a>
+      <main class="gate-card">
+        <h1 class="gate-title">~/apps</h1>
+        <p class="gate-error">{{ authError() }}</p>
+        <a class="login-btn" href="/auth/login?next=%2F">Volver a intentar</a>
       </main>
     } @else {
       <router-outlet></router-outlet>
     }
   `,
   styles: [`
-    .status {
-      margin: 40px auto;
-      max-width: 900px;
-      color: #888;
+    .gate {
+      margin: 80px auto;
+      max-width: 420px;
+      color: #666;
       font-size: 14px;
       padding: 0 28px;
     }
-    .retry { color: #e8e8e8; }
+    .gate-card {
+      margin: 80px auto;
+      max-width: 420px;
+      padding: 32px;
+      border: 1px solid #2a2a2a;
+      background: #141414;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .gate-title { margin: 0; font-size: 20px; color: #e8e8e8; }
+    .gate-sub { margin: 0; font-size: 14px; color: #888; }
+    .gate-error { margin: 0; font-size: 14px; color: #ff9e9e; }
+    .login-btn {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 10px 20px;
+      background: #1a2a1a;
+      border: 1px solid #2a5a2a;
+      color: #5a9;
+      text-decoration: none;
+      font-size: 14px;
+      align-self: flex-start;
+    }
   `]
 })
 export class AppComponent implements OnInit {

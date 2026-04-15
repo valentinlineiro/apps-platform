@@ -18,9 +18,10 @@ import { MicroFrontendLoaderComponent } from '../components/mfe-loader.component
     </header>
     
     @if (manifest()) {
-      <app-mfe-loader 
-        [scriptUrl]="manifest()!.scriptUrl!" 
-        [elementTag]="manifest()!.elementTag!" />
+      <app-mfe-loader
+        [scriptUrl]="manifest()!.scriptUrl!"
+        [elementTag]="manifest()!.elementTag!"
+        [appName]="manifest()!.name" />
     } @else {
       <p class="error">App not found or not configured for frontend.</p>
     }

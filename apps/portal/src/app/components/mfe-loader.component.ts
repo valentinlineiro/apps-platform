@@ -14,13 +14,18 @@ import {
       <p class="status">Cargando...</p>
     }
     @if (error()) {
-      <p class="status error">{{ error() }}</p>
+      <div class="error-box">
+        <p class="error-title">{{ appName() || 'La aplicación' }} no está disponible en este momento.</p>
+        <p class="error-hint">Intenta recargar la página. Si el problema persiste, contacta con soporte.</p>
+      </div>
     }
     <div #elementHost></div>
   `,
   styles: [`
     .status { padding: 24px; color: #666; font-size: 14px; }
-    .error { color: #f88; }
+    .error-box { padding: 24px; border: 1px solid #3a1a1a; background: #1a0f0f; max-width: 480px; margin: 24px; }
+    .error-title { margin: 0 0 6px; font-size: 14px; color: #f88; }
+    .error-hint { margin: 0; font-size: 13px; color: #888; }
   `]
 })
 export class MicroFrontendLoaderComponent implements AfterViewInit {
@@ -28,6 +33,7 @@ export class MicroFrontendLoaderComponent implements AfterViewInit {
 
   scriptUrl = input.required<string>();
   elementTag = input.required<string>();
+  appName = input<string>('');
 
   loading = signal(true);
   error = signal('');
@@ -43,8 +49,8 @@ export class MicroFrontendLoaderComponent implements AfterViewInit {
       if (this.destroyed) return;
       const el = document.createElement(this.elementTag());
       this.hostRef.nativeElement.appendChild(el);
-    } catch (e: any) {
-      if (!this.destroyed) this.error.set(`Failed to load: ${e.message}`);
+    } catch {
+      if (!this.destroyed) this.error.set('load-failed');
     }
     if (!this.destroyed) this.loading.set(false);
   }

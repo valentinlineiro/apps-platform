@@ -15,6 +15,17 @@ const POLL_INTERVAL_MS = 1500;
   template: `
     <main class="layout">
       <h1>exam-corrector</h1>
+      <p class="subtitle">Corrección automática de exámenes tipo test mediante detección óptica de marcas.</p>
+
+      <details class="help-panel">
+        <summary>¿Cómo funciona?</summary>
+        <ul>
+          <li><strong>Plantilla:</strong> foto de la hoja de respuestas del profesor, con las respuestas correctas ya marcadas. Se guarda para reutilizarla en correcciones futuras.</li>
+          <li><strong>Calidad recomendada:</strong> imagen plana, bien iluminada y sin torsión. Evita fotos en ángulo o con sombras sobre las burbujas.</li>
+          <li><strong>Corrección en lote:</strong> sube un PDF (una página por examen) o un ZIP de imágenes. Útil para corregir grupos enteros de una vez.</li>
+          <li><strong>Confianza:</strong> indica la seguridad de la detección para cada respuesta. Las filas con confianza baja (&lt;80%) se marcan para revisión manual.</li>
+        </ul>
+      </details>
 
       <form (submit)="onSubmit($event)" class="panel">
         <label>Plantilla guardada</label>
@@ -191,6 +202,13 @@ const POLL_INTERVAL_MS = 1500;
   `,
   styles: [`
     .layout { max-width: 860px; margin: 0 auto; padding: 24px; }
+    .subtitle { color: #888; font-size: 14px; margin: 4px 0 16px; }
+    .help-panel { border: 1px solid #2a2a2a; background: #111; padding: 12px 16px; margin-bottom: 4px; font-size: 13px; color: #aaa; }
+    .help-panel summary { cursor: pointer; color: #888; font-size: 13px; user-select: none; }
+    .help-panel summary:hover { color: #ccc; }
+    .help-panel ul { margin: 10px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+    .help-panel li { line-height: 1.5; }
+    .help-panel strong { color: #ccc; }
     .panel { border: 1px solid #222; background: #141414; padding: 16px; margin-top: 16px; display: grid; gap: 10px; }
     label { font-size: 12px; color: #999; }
     select, input, button { padding: 10px; background: #0f0f0f; color: #e8e8e8; border: 1px solid #2a2a2a; }

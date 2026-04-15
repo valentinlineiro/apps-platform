@@ -13,11 +13,16 @@ import { AppRegistryService } from '../services/app-registry.service';
         <h1>~/apps</h1>
         <button class="logout" type="button" (click)="logout()">Logout</button>
       </header>
-      <p class="subtitle">Directorio de aplicaciones</p>
+      <p class="subtitle">Herramientas internas disponibles para tu equipo</p>
       @for (app of registry.apps(); track app.id) {
         @if (app.status !== 'disabled' && app.route !== '') {
           <a class="card" [routerLink]="'/' + app.route" [class.wip]="app.status === 'wip'">
-            <h2>{{ app.icon }} {{ app.name }}</h2>
+            <div class="card-header">
+              <h2>{{ app.icon }} {{ app.name }}</h2>
+              @if (app.status === 'wip') {
+                <span class="badge badge-wip">piloto</span>
+              }
+            </div>
             <p>{{ app.description }}</p>
           </a>
         }
@@ -33,7 +38,7 @@ import { AppRegistryService } from '../services/app-registry.service';
       gap: 12px;
     }
     h1 { font-size: 20px; margin: 0; }
-    .subtitle { color: #888; margin: 8px 0 16px; }
+    .subtitle { color: #888; margin: 8px 0 16px; font-size: 14px; }
     .card {
       display: block;
       border: 1px solid #2a2a2a;
@@ -44,10 +49,13 @@ import { AppRegistryService } from '../services/app-registry.service';
       max-width: 420px;
       margin-bottom: 12px;
     }
-    .card.wip { opacity: 0.6; }
-    .card h2 { margin: 0 0 8px; font-size: 16px; }
+    .card:hover { border-color: #3a3a3a; background: #181818; }
+    .card.wip { opacity: 0.65; }
+    .card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .card h2 { margin: 0; font-size: 16px; }
     .card p { margin: 0; color: #999; font-size: 14px; }
-    .loading { color: #666; }
+    .badge { font-size: 10px; font-weight: 600; letter-spacing: 0.05em; padding: 2px 6px; border-radius: 2px; text-transform: uppercase; }
+    .badge-wip { background: #2a1f00; color: #f5a623; border: 1px solid #3a2d00; }
     .logout {
       border: 1px solid #333;
       background: #191919;
