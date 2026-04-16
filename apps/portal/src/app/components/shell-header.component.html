@@ -1,0 +1,45 @@
+<header class="topbar">
+  <div class="left">
+    @if (title()) {
+      <span class="title">{{ title() }}</span>
+    } @else {
+      <a class="back" routerLink="/">← Apps</a>
+    }
+  </div>
+  <nav class="nav">
+    @if (showSettings()) {
+      <a class="nav-link" routerLink="/settings">Configuración</a>
+    }
+    <div class="avatar-wrap">
+      <button
+        class="avatar-btn"
+        type="button"
+        [attr.aria-label]="'Menú de usuario'"
+        (click)="toggleMenu($event)"
+      >
+        @if (avatarUrl()) {
+          <img class="avatar-img" [src]="avatarUrl()!" alt="" />
+        } @else {
+          {{ initials() }}
+        }
+      </button>
+      @if (menuOpen()) {
+        <div class="dropdown">
+          @if (userService.user(); as u) {
+            <div class="dropdown-user">
+              <span class="dropdown-name">{{ u.name }}</span>
+              <span class="dropdown-email">{{ u.email }}</span>
+            </div>
+            <div class="dropdown-divider"></div>
+          }
+          <a class="dropdown-item" routerLink="/profile" (click)="menuOpen.set(false)">
+            Mi perfil
+          </a>
+          <button class="dropdown-item dropdown-item--danger" type="button" (click)="logout()">
+            Cerrar sesión
+          </button>
+        </div>
+      }
+    </div>
+  </nav>
+</header>

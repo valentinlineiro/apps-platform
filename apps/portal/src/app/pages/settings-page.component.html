@@ -1,0 +1,225 @@
+<app-shell-header [showSettings]="false" />
+<main class="layout">
+  <div class="page-header">
+    <h1>Espacio de trabajo</h1>
+    @if (tenant()) {
+      <p class="tenant-id">{{ tenant()!.name }} <span class="muted">· {{ tenant()!.id }}</span></p>
+    }
+  </div>
+
+  <!-- ── Members ─────────────────────────────────────── -->
+  <section class="section">
+    <h2>Miembros</h2>
+
+    @if (membersResource.isLoading()) {
+      <p class="muted">Cargando...</p>
+    } @else if (members().length === 0) {
+      <p class="muted">Sin miembros.</p>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Email</th>
+            <th>Rol</th>
+            @if (isAdmin()) { <th></th> }
+          </tr>
+        </thead>
+        <tbody>
+          @for (m of members(); track m.id) {
+            <tr>
+              <td>{{ m.name }}</td>
+              <td class="muted">{{ m.email }}</td>
+              <td>
+                @if (isAdmin() && m.id !== currentUserId()) {
+                  <select [ngModel]="m.role" (ngModelChange)="changeRole(m, $event)">
+                    <option value="owner">owner</option>
+                    <option value="admin">admin</option>
+                    <option value="member">member</option>
+                    <option value="viewer">viewer</option>
+                  </select>
+                } @else {
+                  <span class="role-badge role-{{ m.role }}">{{ m.role }}</span>
+                }
+              </td>
+              @if (isAdmin()) {
+                <td>
+                  @if (m.id !== currentUserId()) {
+                    <button class="btn-danger" type="button" (click)="removeMember(m)">Eliminar</button>
+                  }
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+
+    @if (isAdmin()) {
+      <form class="inline-form" (submit)="addMember($event)">
+        <input type="email" [(ngModel)]="newEmail" name="email" placeholder="email@ejemplo.com" required />
+        <select [(ngModel)]="newRole" name="role">
+          <option value="member">member</option>
+          <option value="viewer">viewer</option>
+          <option value="admin">admin</option>
+          <option value="owner">owner</option>
+        </select>
+        <button type="submit">Añadir</button>
+      </form>
+      @if (memberError()) { <p class="error">{{ memberError() }}</p> }
+    }
+  </section>
+
+  <!-- ── Installed plugins ───────────────────────────── -->
+  <section class="section">
+    <h2>Aplicaciones instaladas</h2>
+
+    @if (installsResource.isLoading()) {
+      <p class="muted">Cargando...</p>
+    } @else if (installs().length === 0) {
+      <p class="muted">No hay aplicaciones instaladas.</p>
+    } @else {
+      <table>
+        <thead>
+          <tr>
+            <th>Aplicación</th>
+            <th>Estado</th>
+            <th>Backend</th>
+            @if (isAdmin()) { <th></th> }
+          </tr>
+        </thead>
+        <tbody>
+          @for (inst of installs(); track inst.plugin_id) {
+            <tr>
+              <td>
+                {{ inst.manifest.icon ?? '📦' }} {{ inst.manifest.name ?? inst.plugin_id }}
+                <span class="muted small">{{ inst.plugin_id }}</span>
+              </td>
+              <td>
+                <span class="status-badge status-{{ inst.status }}">{{ inst.status }}</span>
+              </td>
+              <td>
+                @if (inst.alive) {
+                  <span class="alive">● activo</span>
+                } @else {
+                  <span class="dead">● inactivo</span>
+                }
+              </td>
+              @if (isAdmin()) {
+                <td class="actions">
+                  @if (inst.status === 'active') {
+                    <button class="btn-warn" type="button" (click)="setInstallStatus(inst, 'suspended')">Suspender</button>
+                  } @else if (inst.status === 'suspended') {
+                    <button class="btn-ok" type="button" (click)="setInstallStatus(inst, 'active')">Activar</button>
+                  }
+                  <button class="btn-danger" type="button" (click)="uninstall(inst)">Desinstalar</button>
+                </td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+    @if (installError()) { <p class="error">{{ installError() }}</p> }
+  </section>
+
+  <!-- ── Catalog ─────────────────────────────────────── -->
+  @if (isAdmin()) {
+    <section class="section">
+      <h2>Catálogo de aplicaciones</h2>
+
+      @if (catalogResource.isLoading()) {
+        <p class="muted">Cargando...</p>
+      } @else if (catalogEntries().length === 0) {
+        <p class="muted">Todas las aplicaciones disponibles ya están instaladas.</p>
+      } @else {
+        <table>
+          <thead>
+            <tr>
+              <th>Aplicación</th>
+              <th>Descripción</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (entry of catalogEntries(); track entry.plugin_id) {
+              <tr>
+                <td>
+                  {{ entry.icon }} {{ entry.name }}
+                  <span class="muted small">v{{ entry.version }}</span>
+                </td>
+                <td class="muted">{{ entry.description }}</td>
+                <td>
+                  <button class="btn-ok" type="button" (click)="installFromCatalog(entry)">Instalar</button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+      @if (catalogError()) { <p class="error">{{ catalogError() }}</p> }
+    </section>
+  }
+
+  <!-- ── Workspace defaults ─────────────────────────────── -->
+  @if (isAdmin()) {
+    <section class="section">
+      <h2>Parámetros del espacio</h2>
+      @if (wsSettingsResource.isLoading()) {
+        <p class="muted">Cargando...</p>
+      } @else {
+        <div class="field-group">
+          <div class="field field--row">
+            <label class="label">Nombre del espacio</label>
+            <input
+              class="ws-input"
+              type="text"
+              [value]="wsSettings().name"
+              (input)="wsSettingsDraft.name = $any($event.target).value"
+            />
+          </div>
+          <div class="field field--row">
+            <label class="label">Idioma por defecto</label>
+            <select class="ws-select" [value]="wsSettings().default_language" (change)="wsSettingsDraft.default_language = $any($event.target).value">
+              <option value="es">Español</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div class="field field--row">
+            <label class="label">Rol por defecto de nuevos miembros</label>
+            <select class="ws-select" [value]="wsSettings().member_default_role" (change)="wsSettingsDraft.member_default_role = $any($event.target).value">
+              <option value="viewer">viewer</option>
+              <option value="member">member</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="label">Apps permitidas</label>
+            <input
+              class="ws-input ws-input--wide"
+              type="text"
+              [value]="allowedAppsDisplay()"
+              (input)="onAllowedAppsInput($any($event.target).value)"
+              placeholder="Dejar vacío para permitir todas"
+            />
+            <span class="hint">IDs separados por coma, p. ej. <code>exam-corrector,attendance-checker</code>. Vacío = sin restricción.</span>
+          </div>
+        </div>
+        @if (wsError()) { <p class="error">{{ wsError() }}</p> }
+        @if (wsSaved()) { <p class="saved">Guardado.</p> }
+        <button class="btn-ok" type="button" (click)="saveWsSettings()" [disabled]="wsSaving()">
+          Guardar cambios
+        </button>
+      }
+    </section>
+  }
+
+  <!-- ── Facturación ────────────────────────────────────── -->
+  @if (isAdmin()) {
+    <section class="section section--muted">
+      <h2>Facturación</h2>
+      <p class="muted">La gestión de suscripciones y pagos estará disponible próximamente.</p>
+    </section>
+  }
+
+</main>

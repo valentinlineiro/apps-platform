@@ -1,0 +1,18 @@
+@if (checkingAuth()) {
+  <p class="gate">Verificando sesión...</p>
+} @else if (!authenticated()) {
+  <main class="gate-card">
+    <h1 class="gate-title">~/apps</h1>
+    <p class="gate-sub">Portal de herramientas internas. Necesitas una cuenta para continuar.</p>
+    <a class="login-btn" [href]="loginHref()">Iniciar sesión</a>
+  </main>
+} @else if (authError()) {
+  <main class="gate-card">
+    <h1 class="gate-title">~/apps</h1>
+    <p class="gate-error">{{ authError() }}</p>
+    <a class="login-btn" href="/auth/login?next=%2F">Volver a intentar</a>
+  </main>
+} @else {
+  <router-outlet></router-outlet>
+}
+<app-toast-container />

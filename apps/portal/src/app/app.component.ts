@@ -8,59 +8,8 @@ import { ToastContainerComponent } from './components/toast-container.component'
   standalone: true,
   imports: [RouterOutlet, ToastContainerComponent],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
-  template: `
-    @if (checkingAuth()) {
-      <p class="gate">Verificando sesión...</p>
-    } @else if (!authenticated()) {
-      <main class="gate-card">
-        <h1 class="gate-title">~/apps</h1>
-        <p class="gate-sub">Portal de herramientas internas. Necesitas una cuenta para continuar.</p>
-        <a class="login-btn" [href]="loginHref()">Iniciar sesión</a>
-      </main>
-    } @else if (authError()) {
-      <main class="gate-card">
-        <h1 class="gate-title">~/apps</h1>
-        <p class="gate-error">{{ authError() }}</p>
-        <a class="login-btn" href="/auth/login?next=%2F">Volver a intentar</a>
-      </main>
-    } @else {
-      <router-outlet></router-outlet>
-    }
-    <app-toast-container />
-  `,
-  styles: [`
-    .gate {
-      margin: 80px auto;
-      max-width: 420px;
-      color: var(--text-dim);
-      font-size: 14px;
-      padding: 0 28px;
-    }
-    .gate-card {
-      margin: 80px auto;
-      max-width: 420px;
-      padding: 32px;
-      border: 1px solid var(--border);
-      background: var(--bg-surface);
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .gate-title { margin: 0; font-size: 20px; color: var(--text); }
-    .gate-sub { margin: 0; font-size: 14px; color: var(--text-muted); }
-    .gate-error { margin: 0; font-size: 14px; color: var(--danger); }
-    .login-btn {
-      display: inline-block;
-      margin-top: 4px;
-      padding: 10px 20px;
-      background: var(--ok-bg);
-      border: 1px solid var(--ok-border);
-      color: var(--ok);
-      text-decoration: none;
-      font-size: 14px;
-      align-self: flex-start;
-    }
-  `]
+  templateUrl: './app.component.html',
+  styleUrl: './app.component.css',
 })
 export class AppComponent implements OnInit {
   private static readonly LOGIN_ATTEMPT_KEY = 'portal_login_attempted';

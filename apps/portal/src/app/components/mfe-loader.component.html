@@ -1,0 +1,10 @@
+@if (loading()) {
+  <p class="status">Cargando...</p>
+}
+@if (error()) {
+  <div class="error-box">
+    <p class="error-title">{{ appName() || 'La aplicación' }} no está disponible en este momento.</p>
+    <p class="error-hint">Intenta recargar la página. Si el problema persiste, contacta con soporte.</p>
+  </div>
+}
+<div #elementHost></div>

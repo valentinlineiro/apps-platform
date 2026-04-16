@@ -9,24 +9,8 @@ import {
   standalone: true,
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    @if (loading()) {
-      <p class="status">Cargando...</p>
-    }
-    @if (error()) {
-      <div class="error-box">
-        <p class="error-title">{{ appName() || 'La aplicación' }} no está disponible en este momento.</p>
-        <p class="error-hint">Intenta recargar la página. Si el problema persiste, contacta con soporte.</p>
-      </div>
-    }
-    <div #elementHost></div>
-  `,
-  styles: [`
-    .status { padding: 24px; color: var(--text-dim); font-size: 14px; }
-    .error-box { padding: 24px; border: 1px solid var(--danger-border); background: var(--danger-bg); max-width: 480px; margin: 24px; }
-    .error-title { margin: 0 0 6px; font-size: 14px; color: var(--danger); }
-    .error-hint { margin: 0; font-size: 13px; color: var(--text-muted); }
-  `]
+  templateUrl: './mfe-loader.component.html',
+  styleUrl: './mfe-loader.component.css',
 })
 export class MicroFrontendLoaderComponent implements AfterViewInit {
   @ViewChild('elementHost') private hostRef!: ElementRef<HTMLElement>;

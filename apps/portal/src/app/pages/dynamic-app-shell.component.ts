@@ -13,21 +13,8 @@ import { ToastService } from '../services/toast.service';
   standalone: true,
   imports: [MicroFrontendLoaderComponent, ShellHeaderComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `
-    <app-shell-header />
-
-    @if (manifest()) {
-      <app-mfe-loader
-        [scriptUrl]="manifest()!.scriptUrl!"
-        [elementTag]="manifest()!.elementTag!"
-        [appName]="manifest()!.name" />
-    } @else {
-      <p class="error">App not found or not configured for frontend.</p>
-    }
-  `,
-  styles: [`
-    .error { padding: 24px; color: var(--danger); }
-  `]
+  templateUrl: './dynamic-app-shell.component.html',
+  styleUrl: './dynamic-app-shell.component.css',
 })
 export class DynamicAppShellComponent {
   private route = inject(ActivatedRoute);

@@ -536,6 +536,37 @@ def _log_audit(user_id: str | None, action: str, target_type: str | None = None,
         )
 
 
+@app.get("/api/audit")
+@require_auth
+def get_audit_log():
+    user_id = session["user_id"]
+    try:
+        limit = min(int(request.args.get("limit", 20)), 100)
+    except (TypeError, ValueError):
+        limit = 20
+    with _db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, action, target_type, target_id, created_at
+            FROM audit_logs
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        ).fetchall()
+    return jsonify([
+        {
+            "id": row["id"],
+            "action": row["action"],
+            "resource_type": row["target_type"],
+            "resource_id": row["target_id"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ])
+
+
 def _upsert_user(email: str, name: str, provider: str, provider_sub: str) -> str:
     now = time.time()
     user_id = f"{provider}:{provider_sub}"

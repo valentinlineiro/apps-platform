@@ -1,0 +1,217 @@
+<app-shell-header [showSettings]="true" />
+<main class="layout">
+  <div class="page-header">
+    <h1 class="page-title">Mi perfil</h1>
+    <p class="page-subtitle">Gestiona tu información personal y preferencias</p>
+  </div>
+
+  @if (saveOk()) {
+    <div class="banner banner--ok">Cambios guardados correctamente.</div>
+  }
+  @if (saveError()) {
+    <div class="banner banner--error">{{ saveError() }}</div>
+  }
+
+  <!-- Identity -->
+  <section class="section">
+    <h2 class="section-title">Identidad</h2>
+    <div class="field-group">
+      <div class="field">
+        <label class="label">Nombre para mostrar</label>
+        <input
+          class="input"
+          type="text"
+          [value]="profile().display_name ?? user()?.name ?? ''"
+          (input)="profileDraft.display_name = $any($event.target).value"
+          placeholder="{{ user()?.name ?? '' }}"
+        />
+        <span class="hint">Si está vacío se usa tu nombre de cuenta.</span>
+      </div>
+      <div class="field">
+        <label class="label">URL del avatar</label>
+        <input
+          class="input"
+          type="url"
+          [value]="profile().avatar_url ?? ''"
+          (input)="profileDraft.avatar_url = $any($event.target).value"
+          placeholder="https://…"
+        />
+      </div>
+      <div class="field">
+        <label class="label">Bio</label>
+        <textarea
+          class="input input--textarea"
+          rows="3"
+          [value]="profile().bio ?? ''"
+          (input)="profileDraft.bio = $any($event.target).value"
+          placeholder="Cuéntanos algo sobre ti…"
+        ></textarea>
+      </div>
+    </div>
+    <button class="btn" (click)="saveProfile()" [disabled]="saving()">Guardar identidad</button>
+  </section>
+
+  <!-- Preferencias -->
+  <section class="section">
+    <h2 class="section-title">Preferencias</h2>
+    <div class="field-group">
+      <div class="field field--row">
+        <label class="label">Tema</label>
+        <select class="select" [value]="prefs().theme" (change)="prefsDraft.theme = $any($event.target).value">
+          <option value="dark">Oscuro</option>
+          <option value="light">Claro</option>
+          <option value="system">Sistema</option>
+        </select>
+      </div>
+      <div class="field field--row">
+        <label class="label">Idioma</label>
+        <select class="select" [value]="prefs().language" (change)="prefsDraft.language = $any($event.target).value">
+          <option value="es">Español</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+      <div class="field field--row">
+        <label class="label">Zona horaria</label>
+        <input
+          class="input"
+          type="text"
+          [value]="prefs().timezone"
+          (input)="prefsDraft.timezone = $any($event.target).value"
+          placeholder="UTC"
+        />
+      </div>
+      <div class="field field--row">
+        <label class="label">Tamaño de fuente</label>
+        <select class="select" [value]="prefs().font_scale" (change)="prefsDraft.font_scale = +$any($event.target).value">
+          <option value="0.8">Pequeño (0.8×)</option>
+          <option value="1.0">Normal (1.0×)</option>
+          <option value="1.2">Grande (1.2×)</option>
+          <option value="1.5">Muy grande (1.5×)</option>
+        </select>
+      </div>
+      <div class="field field--row">
+        <label class="label">Reducir movimiento</label>
+        <label class="toggle">
+          <input
+            type="checkbox"
+            [checked]="prefs().reduced_motion"
+            (change)="prefsDraft.reduced_motion = $any($event.target).checked"
+          />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+    </div>
+    <button class="btn" (click)="savePrefs()" [disabled]="saving()">Guardar preferencias</button>
+  </section>
+
+  <!-- Notificaciones -->
+  <section class="section">
+    <h2 class="section-title">Notificaciones</h2>
+    <div class="field-group">
+      <div class="field field--row">
+        <label class="label">Notificaciones por email</label>
+        <label class="toggle">
+          <input
+            type="checkbox"
+            [checked]="prefs().notification_email"
+            (change)="prefsDraft.notification_email = $any($event.target).checked"
+          />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <div class="field field--row">
+        <label class="label">Resumen de actividad</label>
+        <select class="select" [value]="prefs().notification_digest" (change)="prefsDraft.notification_digest = $any($event.target).value">
+          <option value="none">Nunca</option>
+          <option value="daily">Diario</option>
+          <option value="weekly">Semanal</option>
+        </select>
+      </div>
+    </div>
+    <button class="btn" (click)="savePrefs()" [disabled]="saving()">Guardar notificaciones</button>
+  </section>
+
+  <!-- Espacio de trabajo -->
+  <section class="section">
+    <h2 class="section-title">Espacio de trabajo</h2>
+    <div class="field-group">
+      <div class="field">
+        <label class="label">App de inicio</label>
+        <input
+          class="input"
+          type="text"
+          [value]="tenantPrefs().default_home_app ?? ''"
+          (input)="tenantPrefsDraft.default_home_app = $any($event.target).value || null"
+          placeholder="Ruta a la app (p. ej. exam-corrector)"
+        />
+        <span class="hint">Al iniciar sesión irás directamente a esta app en lugar del directorio.</span>
+      </div>
+    </div>
+    <button class="btn" (click)="saveTenantPrefs()" [disabled]="saving()">Guardar espacio de trabajo</button>
+  </section>
+
+  <!-- Privacidad -->
+  <section class="section">
+    <h2 class="section-title">Privacidad</h2>
+    <div class="field-group">
+      <div class="field field--row">
+        <div>
+          <div class="label">Mostrar actividad a otros miembros</div>
+          <div class="hint">Otros miembros pueden ver cuándo estuviste activo.</div>
+        </div>
+        <label class="toggle">
+          <input
+            type="checkbox"
+            [checked]="profile().show_activity"
+            (change)="profileDraft.show_activity = $any($event.target).checked"
+          />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <div class="field field--row">
+        <div>
+          <div class="label">Mostrar email a otros miembros</div>
+          <div class="hint">Tu dirección de email es visible en tu perfil.</div>
+        </div>
+        <label class="toggle">
+          <input
+            type="checkbox"
+            [checked]="profile().show_email"
+            (change)="profileDraft.show_email = $any($event.target).checked"
+          />
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+    </div>
+    <button class="btn" (click)="saveProfile()" [disabled]="saving()">Guardar privacidad</button>
+  </section>
+
+  <!-- Actividad reciente -->
+  <section class="section">
+    <h2 class="section-title">Actividad reciente</h2>
+    @if (auditLoading()) {
+      <p class="muted">Cargando…</p>
+    } @else if (auditEntries().length === 0) {
+      <p class="muted">Sin actividad reciente.</p>
+    } @else {
+      <table class="audit-table">
+        <thead>
+          <tr>
+            <th>Acción</th>
+            <th>Recurso</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (entry of auditEntries(); track entry.id) {
+            <tr>
+              <td class="audit-action">{{ entry.action }}</td>
+              <td class="muted">{{ entry.resource_type }}{{ entry.resource_id ? ' · ' + entry.resource_id : '' }}</td>
+              <td class="muted">{{ formatDate(entry.created_at) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    }
+  </section>
+</main>

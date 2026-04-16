@@ -145,6 +145,21 @@ Jobs and batches persist in `uploads/jobs.db` (SQLite). Batch items process conc
 - `exam-corrector-page.component.ts` — main UI: template selection, file upload, async polling, batch mode
 - `services/exam-corrector-api.service.ts` — HTTP calls; uses same-origin paths (nginx proxies in prod, proxy.conf.json in dev)
 
+## Angular component conventions
+
+All Angular components use **separate files** for template and styles — never inline `template` or `styles` in the `@Component` decorator:
+
+```typescript
+@Component({
+  selector: 'app-my-component',
+  templateUrl: './my-component.component.html',   // ✅
+  styleUrl: './my-component.component.css',        // ✅
+  // NOT: template: `...`, styles: [`...`]          // ❌
+})
+```
+
+Each component lives alongside its `.html` and `.css` files in the same directory.
+
 ## Environment
 
 **Portal backend:**

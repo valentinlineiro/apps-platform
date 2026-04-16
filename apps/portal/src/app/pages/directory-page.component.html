@@ -1,0 +1,17 @@
+<app-shell-header title="~/apps" />
+<main class="layout">
+  <p class="subtitle">Herramientas internas disponibles para tu equipo</p>
+  @for (app of registry.apps(); track app.id) {
+    @if (app.status !== 'disabled' && app.route !== '') {
+      <a class="card" [routerLink]="'/' + app.route" [class.wip]="app.status === 'wip'">
+        <div class="card-header">
+          <h2>{{ app.icon }} {{ app.name }}</h2>
+          @if (app.status === 'wip') {
+            <span class="badge badge-wip">piloto</span>
+          }
+        </div>
+        <p>{{ app.description }}</p>
+      </a>
+    }
+  }
+</main>
