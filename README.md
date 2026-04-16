@@ -69,7 +69,7 @@ export OAUTH_REDIRECT_URI="http://localhost:4200/auth/callback"
 apps-platform/
 ├── docker-compose.yml
 ├── scaffold-app.sh
-├── PARENT_REPO.md
+├── docs/
 └── apps/  # submódulos git
     ├── portal/
     ├── exam-corrector/

@@ -1,11 +1,13 @@
 import { Routes } from '@angular/router';
 import { DirectoryPageComponent } from './pages/directory-page.component';
 import { DynamicAppShellComponent } from './pages/dynamic-app-shell.component';
+import { ProfilePageComponent } from './pages/profile-page.component';
 import { SettingsPageComponent } from './pages/settings-page.component';
 import { AppManifest } from './services/app-registry.service';
 
 export const STATIC_ROUTES: Routes = [
   { path: '', component: DirectoryPageComponent },
+  { path: 'profile', component: ProfilePageComponent },
   { path: 'settings', component: SettingsPageComponent },
 ];
 

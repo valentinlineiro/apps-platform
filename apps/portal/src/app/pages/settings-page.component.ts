@@ -6,6 +6,14 @@ import { FormsModule } from '@angular/forms';
 import { UserService } from '../services/user.service';
 import { ShellHeaderComponent } from '../components/shell-header.component';
 
+interface WorkspaceSettings {
+  name: string;
+  default_language: string;
+  member_default_role: string;
+  allowed_apps: string[] | null;
+  notification_defaults: Record<string, unknown>;
+}
+
 interface Member {
   id: string;
   email: string;
@@ -41,11 +49,12 @@ interface CatalogEntry {
   template: `
     <app-shell-header [showSettings]="false" />
     <main class="layout">
-      <h1>Configuración del espacio</h1>
-
-      @if (tenant()) {
-        <p class="tenant-id">{{ tenant()!.name }} <span class="muted">· {{ tenant()!.id }}</span></p>
-      }
+      <div class="page-header">
+        <h1>Espacio de trabajo</h1>
+        @if (tenant()) {
+          <p class="tenant-id">{{ tenant()!.name }} <span class="muted">· {{ tenant()!.id }}</span></p>
+        }
+      </div>
 
       <!-- ── Members ─────────────────────────────────────── -->
       <section class="section">
@@ -201,6 +210,56 @@ interface CatalogEntry {
         </section>
       }
 
+      <!-- ── Workspace defaults ─────────────────────────────── -->
+      @if (isAdmin()) {
+        <section class="section">
+          <h2>Parámetros del espacio</h2>
+          @if (wsSettingsResource.isLoading()) {
+            <p class="muted">Cargando...</p>
+          } @else {
+            <div class="field-group">
+              <div class="field field--row">
+                <label class="label">Nombre del espacio</label>
+                <input
+                  class="ws-input"
+                  type="text"
+                  [value]="wsSettings().name"
+                  (input)="wsSettingsDraft.name = $any($event.target).value"
+                />
+              </div>
+              <div class="field field--row">
+                <label class="label">Idioma por defecto</label>
+                <select class="ws-select" [value]="wsSettings().default_language" (change)="wsSettingsDraft.default_language = $any($event.target).value">
+                  <option value="es">Español</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+              <div class="field field--row">
+                <label class="label">Rol por defecto de nuevos miembros</label>
+                <select class="ws-select" [value]="wsSettings().member_default_role" (change)="wsSettingsDraft.member_default_role = $any($event.target).value">
+                  <option value="viewer">viewer</option>
+                  <option value="member">member</option>
+                  <option value="admin">admin</option>
+                </select>
+              </div>
+            </div>
+            @if (wsError()) { <p class="error">{{ wsError() }}</p> }
+            @if (wsSaved()) { <p class="saved">Guardado.</p> }
+            <button class="btn-ok" type="button" (click)="saveWsSettings()" [disabled]="wsSaving()">
+              Guardar cambios
+            </button>
+          }
+        </section>
+      }
+
+      <!-- ── Facturación ────────────────────────────────────── -->
+      @if (isAdmin()) {
+        <section class="section section--muted">
+          <h2>Facturación</h2>
+          <p class="muted">La gestión de suscripciones y pagos estará disponible próximamente.</p>
+        </section>
+      }
+
     </main>
   `,
   styles: [`
@@ -238,6 +297,30 @@ interface CatalogEntry {
     .btn-ok { border-color: var(--ok-border); color: var(--ok); }
     .btn-ok:hover { background: var(--ok-bg); }
     .error { color: var(--danger); font-size: 13px; margin-top: 8px; }
+    .saved { color: var(--ok); font-size: 13px; margin-top: 8px; }
+    .page-header { margin-bottom: 24px; }
+    .field-group { display: flex; flex-direction: column; gap: 14px; margin-bottom: 16px; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field--row { flex-direction: row; align-items: center; justify-content: space-between; }
+    .label { font-size: 13px; color: var(--text); }
+    .ws-input {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      font-size: 13px;
+      border-radius: 4px;
+      width: 220px;
+    }
+    .ws-select {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      font-size: 13px;
+      border-radius: 4px;
+    }
+    .section--muted { opacity: 0.7; }
   `]
 })
 export class SettingsPageComponent {
@@ -252,6 +335,10 @@ export class SettingsPageComponent {
   memberError = signal('');
   installError = signal('');
   catalogError = signal('');
+  wsError = signal('');
+  wsSaved = signal(false);
+  wsSaving = signal(false);
+  wsSettingsDraft: Partial<WorkspaceSettings> = {};
 
   membersResource = resource({
     params: () => this.tenant()?.id,
@@ -270,9 +357,18 @@ export class SettingsPageComponent {
     loader: () => fetch('/api/catalog').then(r => r.json()) as Promise<CatalogEntry[]>,
   });
 
+  wsSettingsResource = resource({
+    params: () => this.tenant()?.id,
+    loader: ({ params: tid }) =>
+      tid
+        ? fetch(`/api/tenants/${tid}/settings`, { credentials: 'include' }).then(r => r.json()) as Promise<WorkspaceSettings>
+        : Promise.resolve({ name: '', default_language: 'es', member_default_role: 'member', allowed_apps: null, notification_defaults: {} }),
+  });
+
   members = computed(() => this.membersResource.value() ?? []);
   installs = computed(() => this.installsResource.value() ?? []);
   catalogEntries = computed(() => (this.catalogResource.value() ?? []).filter(e => !e.installed));
+  wsSettings = computed(() => this.wsSettingsResource.value() ?? { name: '', default_language: 'es', member_default_role: 'member', allowed_apps: null, notification_defaults: {} });
 
   async addMember(ev: Event) {
     ev.preventDefault();
@@ -354,5 +450,30 @@ export class SettingsPageComponent {
     }
     this.installsResource.reload();
     this.catalogResource.reload();
+  }
+
+  async saveWsSettings() {
+    const tid = this.tenant()?.id;
+    if (!tid) return;
+    this.wsError.set('');
+    this.wsSaved.set(false);
+    this.wsSaving.set(true);
+    try {
+      const body = { ...this.wsSettings(), ...this.wsSettingsDraft };
+      const res = await fetch(`/api/tenants/${tid}/settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Error al guardar');
+      this.wsSettingsDraft = {};
+      this.wsSettingsResource.reload();
+      this.wsSaved.set(true);
+      setTimeout(() => this.wsSaved.set(false), 3000);
+    } catch (err: unknown) {
+      this.wsError.set(err instanceof Error ? err.message : 'Error al guardar');
+    }
+    this.wsSaving.set(false);
   }
 }

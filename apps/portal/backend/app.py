@@ -268,6 +268,52 @@ def _init_db() -> None:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    user_id             TEXT PRIMARY KEY REFERENCES users(id),
+                    theme               TEXT    NOT NULL DEFAULT 'dark',
+                    language            TEXT    NOT NULL DEFAULT 'es',
+                    timezone            TEXT    NOT NULL DEFAULT 'UTC',
+                    reduced_motion      INTEGER NOT NULL DEFAULT 0,
+                    font_scale          REAL    NOT NULL DEFAULT 1.0,
+                    notification_email  INTEGER NOT NULL DEFAULT 1,
+                    notification_digest TEXT    NOT NULL DEFAULT 'weekly'
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id      TEXT PRIMARY KEY REFERENCES users(id),
+                    avatar_url   TEXT,
+                    bio          TEXT,
+                    display_name TEXT,
+                    show_activity INTEGER NOT NULL DEFAULT 1,
+                    show_email    INTEGER NOT NULL DEFAULT 0
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_tenant_preferences (
+                    user_id          TEXT NOT NULL REFERENCES users(id),
+                    tenant_id        TEXT NOT NULL REFERENCES tenants(id),
+                    default_home_app TEXT,
+                    notify_app_ids   TEXT NOT NULL DEFAULT '[]',
+                    PRIMARY KEY (user_id, tenant_id)
+                )
+                """
+            )
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                    version     INTEGER PRIMARY KEY,
+                    description TEXT    NOT NULL,
+                    applied_at  {_FLOAT} NOT NULL
+                )
+                """
+            )
             conn.executemany(
                 "INSERT INTO roles(name) VALUES (?) ON CONFLICT(name) DO NOTHING",
                 [("owner",), ("admin",), ("member",), ("viewer",)],
@@ -279,6 +325,62 @@ def _init_db() -> None:
                 pass
             else:
                 raise e
+
+
+def _add_column_safe(conn, table: str, column: str, definition: str) -> None:
+    """ADD COLUMN that is a no-op when the column already exists.
+
+    Postgres supports IF NOT EXISTS natively.
+    SQLite doesn't, so we check PRAGMA table_info first.
+    """
+    if DATABASE_URL:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
+    else:
+        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+# ---------------------------------------------------------------------------
+# Versioned migrations
+# ---------------------------------------------------------------------------
+# Each entry: (version: int, description: str, fn: callable taking conn)
+# Migrations run in version order; each is recorded in schema_migrations so
+# it runs exactly once.  Add new migrations at the bottom with the next
+# integer version.  Never edit or delete existing entries.
+# ---------------------------------------------------------------------------
+
+def _m001_tenant_workspace_columns(conn) -> None:
+    _add_column_safe(conn, "tenants", "default_language",      "TEXT NOT NULL DEFAULT 'es'")
+    _add_column_safe(conn, "tenants", "member_default_role",   "TEXT NOT NULL DEFAULT 'member'")
+    _add_column_safe(conn, "tenants", "allowed_apps",          "TEXT")
+    _add_column_safe(conn, "tenants", "notification_defaults", "TEXT NOT NULL DEFAULT '{}'")
+
+
+_MIGRATIONS: list[tuple[int, str, object]] = [
+    (1, "tenant workspace columns", _m001_tenant_workspace_columns),
+]
+
+
+def _run_migrations() -> None:
+    """Apply any pending migrations in version order."""
+    with _db() as conn:
+        rows = conn.execute("SELECT version FROM schema_migrations").fetchall()
+    applied = {row["version"] for row in rows}
+
+    pending = [(v, d, fn) for v, d, fn in _MIGRATIONS if v not in applied]
+    if not pending:
+        return
+
+    for version, description, fn in pending:
+        app.logger.info(f"migration {version}: {description}")
+        with _db() as conn:
+            fn(conn)
+            conn.execute(
+                "INSERT INTO schema_migrations (version, description, applied_at) VALUES (?, ?, ?)",
+                (version, description, time.time()),
+            )
+        app.logger.info(f"migration {version} complete")
 
 
 def _init_default_tenant() -> None:
@@ -925,6 +1027,287 @@ def get_catalog():
     return jsonify(result)
 
 
+# ── Profile & Preferences endpoints ──────────────────────────────────────────
+
+_VALID_THEMES   = {"dark", "light", "system"}
+_VALID_DIGESTS  = {"none", "daily", "weekly"}
+_VALID_SCALES   = {0.8, 1.0, 1.2, 1.5}
+
+
+def _get_preferences(user_id: str) -> dict:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_preferences WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if not row:
+        return {
+            "theme": "dark", "language": "es", "timezone": "UTC",
+            "reduced_motion": False, "font_scale": 1.0,
+            "notification_email": True, "notification_digest": "weekly",
+        }
+    return {
+        "theme": row["theme"], "language": row["language"],
+        "timezone": row["timezone"],
+        "reduced_motion": bool(row["reduced_motion"]),
+        "font_scale": row["font_scale"],
+        "notification_email": bool(row["notification_email"]),
+        "notification_digest": row["notification_digest"],
+    }
+
+
+def _get_profile(user_id: str) -> dict:
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
+        ).fetchone()
+    if not row:
+        return {"avatar_url": None, "bio": None, "display_name": None,
+                "show_activity": True, "show_email": False}
+    return {
+        "avatar_url": row["avatar_url"],
+        "bio": row["bio"],
+        "display_name": row["display_name"],
+        "show_activity": bool(row["show_activity"]),
+        "show_email": bool(row["show_email"]),
+    }
+
+
+@app.get("/auth/me/preferences")
+@require_auth
+def get_preferences():
+    return jsonify(_get_preferences(session["user_id"]))
+
+
+@app.patch("/auth/me/preferences")
+@require_auth
+def update_preferences():
+    user_id = session["user_id"]
+    body = request.get_json(force=True) or {}
+    errors = {}
+
+    theme = body.get("theme")
+    if theme is not None and theme not in _VALID_THEMES:
+        errors["theme"] = f"must be one of: {', '.join(sorted(_VALID_THEMES))}"
+
+    digest = body.get("notification_digest")
+    if digest is not None and digest not in _VALID_DIGESTS:
+        errors["notification_digest"] = f"must be one of: {', '.join(sorted(_VALID_DIGESTS))}"
+
+    font_scale = body.get("font_scale")
+    if font_scale is not None and font_scale not in _VALID_SCALES:
+        errors["font_scale"] = f"must be one of: {sorted(_VALID_SCALES)}"
+
+    if errors:
+        return jsonify({"error": "invalid_fields", "fieldErrors": errors}), 400
+
+    current = _get_preferences(user_id)
+    merged = {**current, **{k: v for k, v in body.items() if k in current}}
+
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_preferences
+              (user_id, theme, language, timezone, reduced_motion, font_scale,
+               notification_email, notification_digest)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+              theme = excluded.theme,
+              language = excluded.language,
+              timezone = excluded.timezone,
+              reduced_motion = excluded.reduced_motion,
+              font_scale = excluded.font_scale,
+              notification_email = excluded.notification_email,
+              notification_digest = excluded.notification_digest
+            """,
+            (user_id, merged["theme"], merged["language"], merged["timezone"],
+             1 if merged["reduced_motion"] else 0,
+             merged["font_scale"],
+             1 if merged["notification_email"] else 0,
+             merged["notification_digest"]),
+        )
+    return jsonify(_get_preferences(user_id))
+
+
+@app.get("/auth/me/profile")
+@require_auth
+def get_profile():
+    return jsonify(_get_profile(session["user_id"]))
+
+
+@app.patch("/auth/me/profile")
+@require_auth
+def update_profile():
+    user_id = session["user_id"]
+    body = request.get_json(force=True) or {}
+    allowed = {"avatar_url", "bio", "display_name", "show_activity", "show_email"}
+    current = _get_profile(user_id)
+    merged = {**current, **{k: v for k, v in body.items() if k in allowed}}
+
+    with _db() as conn:
+        conn.execute(
+            """
+            INSERT INTO user_profiles
+              (user_id, avatar_url, bio, display_name, show_activity, show_email)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+              avatar_url = excluded.avatar_url,
+              bio = excluded.bio,
+              display_name = excluded.display_name,
+              show_activity = excluded.show_activity,
+              show_email = excluded.show_email
+            """,
+            (user_id, merged["avatar_url"], merged["bio"], merged["display_name"],
+             1 if merged["show_activity"] else 0,
+             1 if merged["show_email"] else 0),
+        )
+    return jsonify(_get_profile(user_id))
+
+
+@app.get("/auth/me/tenant-preferences")
+@require_auth
+def get_tenant_preferences():
+    user_id = session["user_id"]
+    membership = _get_tenant_membership(user_id)
+    if not membership:
+        return jsonify({"default_home_app": None, "notify_app_ids": []})
+    tenant_id = membership["id"]
+    with _db() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_tenant_preferences WHERE user_id = ? AND tenant_id = ?",
+            (user_id, tenant_id),
+        ).fetchone()
+    if not row:
+        return jsonify({"default_home_app": None, "notify_app_ids": []})
+    return jsonify({
+        "default_home_app": row["default_home_app"],
+        "notify_app_ids": json.loads(row["notify_app_ids"] or "[]"),
+    })
+
+
+@app.patch("/auth/me/tenant-preferences")
+@require_auth
+def update_tenant_preferences():
+    user_id = session["user_id"]
+    membership = _get_tenant_membership(user_id)
+    if not membership:
+        return jsonify({"error": "not_a_tenant_member"}), 403
+    tenant_id = membership["id"]
+    body = request.get_json(force=True) or {}
+
+    notify_ids = body.get("notify_app_ids")
+    if notify_ids is not None and not isinstance(notify_ids, list):
+        return jsonify({"error": "notify_app_ids must be an array"}), 400
+
+    with _db() as conn:
+        existing = conn.execute(
+            "SELECT * FROM user_tenant_preferences WHERE user_id = ? AND tenant_id = ?",
+            (user_id, tenant_id),
+        ).fetchone()
+        current_home = existing["default_home_app"] if existing else None
+        current_ids  = json.loads(existing["notify_app_ids"] or "[]") if existing else []
+
+        new_home = body.get("default_home_app", current_home)
+        new_ids  = notify_ids if notify_ids is not None else current_ids
+
+        conn.execute(
+            """
+            INSERT INTO user_tenant_preferences
+              (user_id, tenant_id, default_home_app, notify_app_ids)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, tenant_id) DO UPDATE SET
+              default_home_app = excluded.default_home_app,
+              notify_app_ids   = excluded.notify_app_ids
+            """,
+            (user_id, tenant_id, new_home, json.dumps(new_ids)),
+        )
+    return jsonify({"default_home_app": new_home, "notify_app_ids": new_ids})
+
+
+# ── Tenant settings endpoints ─────────────────────────────────────────────────
+
+def _get_tenant_settings(tenant_id: str) -> dict:
+    with _db() as conn:
+        row = conn.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
+    if not row:
+        return {}
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "default_language": row["default_language"] if "default_language" in row.keys() else "es",
+        "member_default_role": row["member_default_role"] if "member_default_role" in row.keys() else "member",
+        "allowed_apps": json.loads(row["allowed_apps"]) if (row["allowed_apps"] if "allowed_apps" in row.keys() else None) else None,
+        "notification_defaults": json.loads(row["notification_defaults"] if "notification_defaults" in row.keys() else "{}") or {},
+    }
+
+
+@app.get("/api/tenants/<tenant_id>/settings")
+@require_auth
+def get_tenant_settings(tenant_id: str):
+    user_id = session["user_id"]
+    with _db() as conn:
+        member = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, user_id),
+        ).fetchone()
+    if not member:
+        return jsonify({"error": "forbidden"}), 403
+    return jsonify(_get_tenant_settings(tenant_id))
+
+
+@app.patch("/api/tenants/<tenant_id>/settings")
+@require_auth
+def update_tenant_settings(tenant_id: str):
+    user_id = session["user_id"]
+    with _db() as conn:
+        member = conn.execute(
+            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
+            (tenant_id, user_id),
+        ).fetchone()
+    if not member or member["role"] not in ("owner", "admin"):
+        return jsonify({"error": "forbidden"}), 403
+
+    body = request.get_json(force=True) or {}
+    allowed_roles = {"owner", "admin", "member", "viewer"}
+    errors = {}
+
+    member_default_role = body.get("member_default_role")
+    if member_default_role is not None and member_default_role not in allowed_roles:
+        errors["member_default_role"] = f"must be one of: {', '.join(sorted(allowed_roles))}"
+
+    allowed_apps = body.get("allowed_apps")
+    if allowed_apps is not None and not isinstance(allowed_apps, list):
+        errors["allowed_apps"] = "must be an array or null"
+
+    if errors:
+        return jsonify({"error": "invalid_fields", "fieldErrors": errors}), 400
+
+    now = time.time()
+    updates = {}
+    if "name" in body and _is_non_empty_string(body["name"]):
+        updates["name"] = body["name"]
+    if "default_language" in body:
+        updates["default_language"] = body["default_language"]
+    if member_default_role is not None:
+        updates["member_default_role"] = member_default_role
+    if "allowed_apps" in body:
+        updates["allowed_apps"] = json.dumps(allowed_apps) if allowed_apps is not None else None
+    if "notification_defaults" in body and isinstance(body["notification_defaults"], dict):
+        updates["notification_defaults"] = json.dumps(body["notification_defaults"])
+
+    if updates:
+        updates["updated_at"] = now
+        set_clause = ", ".join(f"{k} = ?" for k in updates)
+        with _db() as conn:
+            conn.execute(
+                f"UPDATE tenants SET {set_clause} WHERE id = ?",
+                (*updates.values(), tenant_id),
+            )
+        _log_audit(user_id, "tenant_settings_updated", "tenant", tenant_id,
+                   {"fields": list(updates.keys())})
+
+    return jsonify(_get_tenant_settings(tenant_id))
+
+
 @app.get("/auth/login")
 def auth_login():
     if not _oauth_is_configured():
@@ -1069,6 +1452,7 @@ def auth_me():
 if __name__ == "__main__":
     _ensure_db_exists()
     _init_db()
+    _run_migrations()
     _init_default_tenant()
     _init_static_apps()
     app.run(host="0.0.0.0", port=5000)
@@ -1076,6 +1460,7 @@ if __name__ == "__main__":
 
 _ensure_db_exists()
 _init_db()
+_run_migrations()
 _init_default_tenant()
 _init_static_apps()
 
