@@ -8,7 +8,7 @@ export class ExamCorrectorApiService {
 
   listTemplates() {
     return firstValueFrom(
-      this.http.get<{ ok: boolean; templates: Array<{ id: string; name: string }> }>(
+      this.http.get<{ ok: boolean; templates: Array<{ id: string; name: string; created_at: number }> }>(
         '/exam-corrector/api/templates'
       )
     );
@@ -116,6 +116,14 @@ export class ExamCorrectorApiService {
   markReviewed(batchId: string, idx: number) {
     return firstValueFrom(
       this.http.post<{ ok: boolean }>(`/exam-corrector/batch/review/${batchId}/${idx}`, {})
+    );
+  }
+
+  deleteTemplate(templateId: string) {
+    return firstValueFrom(
+      this.http.delete<{ ok: boolean; error?: string }>(
+        `/exam-corrector/api/templates/${templateId}`
+      )
     );
   }
 

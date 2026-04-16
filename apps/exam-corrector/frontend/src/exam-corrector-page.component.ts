@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component, inject, resource, signal } from '@angular/core';
-import { DecimalPipe } from '@angular/common';
+import {
+  ChangeDetectionStrategy, Component, inject, resource, signal,
+} from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ExamCorrectorApiService } from './services/exam-corrector-api.service';
 
@@ -7,193 +9,293 @@ const POLL_TIMEOUT_MS = 5 * 60 * 1000;
 const BATCH_POLL_TIMEOUT_MS = 60 * 60 * 1000;
 const POLL_INTERVAL_MS = 1500;
 
+type Tab = 'single' | 'batch' | 'templates';
+
 @Component({
   selector: 'app-exam-corrector-page',
   standalone: true,
-  imports: [FormsModule, DecimalPipe],
+  imports: [FormsModule, DecimalPipe, DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="layout">
       <h1>exam-corrector</h1>
       <p class="subtitle">Corrección automática de exámenes tipo test mediante detección óptica de marcas.</p>
 
-      <details class="help-panel">
-        <summary>¿Cómo funciona?</summary>
-        <ul>
-          <li><strong>Plantilla:</strong> foto de la hoja de respuestas del profesor, con las respuestas correctas ya marcadas. Se guarda para reutilizarla en correcciones futuras.</li>
-          <li><strong>Calidad recomendada:</strong> imagen plana, bien iluminada y sin torsión. Evita fotos en ángulo o con sombras sobre las burbujas.</li>
-          <li><strong>Corrección en lote:</strong> sube un PDF (una página por examen) o un ZIP de imágenes. Útil para corregir grupos enteros de una vez.</li>
-          <li><strong>Confianza:</strong> indica la seguridad de la detección para cada respuesta. Las filas con confianza baja (&lt;80%) se marcan para revisión manual.</li>
-        </ul>
-      </details>
+      <!-- ── Tab bar ────────────────────────────────── -->
+      <nav class="tabs">
+        <button type="button" [class.tab-active]="activeTab() === 'single'"    (click)="activeTab.set('single')">Individual</button>
+        <button type="button" [class.tab-active]="activeTab() === 'batch'"     (click)="activeTab.set('batch')">Lote</button>
+        <button type="button" [class.tab-active]="activeTab() === 'templates'" (click)="activeTab.set('templates')">Plantillas</button>
+      </nav>
 
-      <form (submit)="onSubmit($event)" class="panel">
-        <label>Plantilla guardada</label>
-        <select [ngModel]="selectedTemplateId()" (ngModelChange)="onTemplateChange($event)" name="template_id">
-          <option value="__upload__">Subir nueva plantilla...</option>
-          @for (t of templatesResource.value() ?? []; track t.id) {
-            <option [value]="t.id">{{ t.name }}</option>
+      <!-- ══════════════════════════════════════════════
+           TAB: Individual
+      ══════════════════════════════════════════════ -->
+      @if (activeTab() === 'single') {
+
+        <details class="help-panel">
+          <summary>¿Cómo funciona?</summary>
+          <ul>
+            <li><strong>Plantilla:</strong> foto de la hoja de respuestas del profesor con las respuestas correctas ya marcadas. Se guarda para reutilizarla.</li>
+            <li><strong>Calidad:</strong> imagen plana, bien iluminada, sin torsión ni sombras sobre las burbujas.</li>
+            <li><strong>Confianza:</strong> indica la seguridad de detección por respuesta. Las filas marcadas con ⚠️ requieren revisión manual.</li>
+          </ul>
+        </details>
+
+        <form (submit)="onSubmit($event)" class="panel">
+          <label>Plantilla guardada</label>
+          <select [ngModel]="selectedTemplateId()" (ngModelChange)="onTemplateChange($event)" name="template_id">
+            <option value="__upload__">Subir nueva plantilla...</option>
+            @for (t of templatesResource.value() ?? []; track t.id) {
+              <option [value]="t.id">{{ t.name }}</option>
+            }
+          </select>
+
+          @if (selectedTemplateId() === '__upload__') {
+            <label>Nueva plantilla</label>
+            <div class="drop-zone" [class.dz-active]="templateDrop()"
+                 (click)="templateInput.click()"
+                 (dragover)="$event.preventDefault(); templateDrop.set(true)"
+                 (dragleave)="templateDrop.set(false)"
+                 (drop)="onTemplateDrop($event)">
+              <input #templateInput type="file" accept="image/*" (change)="onTemplateFile($event)" />
+              <span>{{ templateFile()?.name ?? 'Arrastra aquí o haz clic' }}</span>
+            </div>
+            <input type="text" [ngModel]="templateName()" (ngModelChange)="templateName.set($event)"
+                   name="template_name" placeholder="Nombre de la plantilla (opcional)" />
+            <label class="check">
+              <input type="checkbox" [ngModel]="saveTemplate()" (ngModelChange)="saveTemplate.set($event)" name="save_template" />
+              Guardar plantilla para uso futuro
+            </label>
           }
-        </select>
 
-        @if (selectedTemplateId() === '__upload__') {
-          <label>Nueva plantilla</label>
-          <input type="file" (change)="onTemplateFile($event)" accept="image/*" />
-          <input type="text" [ngModel]="templateName()" (ngModelChange)="templateName.set($event)" name="template_name" placeholder="Nombre plantilla (opcional)" />
-          <label class="check">
-            <input type="checkbox" [ngModel]="saveTemplate()" (ngModelChange)="saveTemplate.set($event)" name="save_template" />
-            Guardar plantilla para uso futuro
-          </label>
+          <label>Examen del alumno</label>
+          <div class="drop-zone" [class.dz-active]="examDrop()"
+               (click)="examInput.click()"
+               (dragover)="$event.preventDefault(); examDrop.set(true)"
+               (dragleave)="examDrop.set(false)"
+               (drop)="onExamDrop($event)">
+            <input #examInput type="file" accept="image/*" (change)="onExamFile($event)" />
+            <span>{{ examFile()?.name ?? 'Arrastra aquí o haz clic' }}</span>
+          </div>
+
+          <button type="submit" [disabled]="loading()">Corregir</button>
+        </form>
+
+        <p class="status">{{ status() }}</p>
+        @if (loading()) {
+          <div class="progress-track"><div class="progress-fill" [style.width.%]="progressValue()"></div></div>
         }
 
-        <label>Examen</label>
-        <input type="file" (change)="onExamFile($event)" accept="image/*" required />
-
-        <button type="submit" [disabled]="loading()">Corregir</button>
-      </form>
-
-      <p class="status">{{ status() }}</p>
-      @if (loading()) {
-        <div class="progress-track">
-          <div class="progress-fill" [style.width.%]="progressValue()"></div>
-        </div>
+        @if (result(); as r) {
+          <section class="panel result-panel">
+            <div class="score-row">
+              <span class="score">{{ r.total_puntos }}/{{ r.max_puntos }}</span>
+              <span class="score-pct">{{ r.porcentaje_puntos || 0 }}%</span>
+            </div>
+            @if (r.nombre) { <p class="result-meta">Alumno: {{ r.nombre }}</p> }
+            @if (r.warning) { <p class="result-warn">⚠️ {{ r.warning }}</p> }
+            @if (r.feedback?.length) {
+              <table>
+                <thead>
+                  <tr>
+                    <th>Pregunta</th>
+                    <th>Dada</th>
+                    <th>Correcta</th>
+                    <th>Estado</th>
+                    <th>Confianza</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of r.feedback; track row.pregunta_label) {
+                    <tr [class.low-conf]="row.confianza != null && row.confianza < 0.8">
+                      <td>{{ row.pregunta_label }}</td>
+                      <td>{{ row.respuesta_dada }}</td>
+                      <td>{{ row.respuesta_correcta }}</td>
+                      <td>
+                        {{ row.estado }}
+                        @if (row.confianza != null && row.confianza < 0.8) { <span class="conf-warn">⚠️</span> }
+                      </td>
+                      <td [class.conf-low]="row.confianza != null && row.confianza < 0.8">
+                        {{ row.confianza != null ? ((row.confianza * 100 | number:'1.0-0') + '%') : '—' }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          </section>
+        }
       }
 
-      @if (result(); as r) {
+      <!-- ══════════════════════════════════════════════
+           TAB: Lote
+      ══════════════════════════════════════════════ -->
+      @if (activeTab() === 'batch') {
+
+        <details class="help-panel">
+          <summary>¿Cómo funciona el modo lote?</summary>
+          <ul>
+            <li><strong>Formato:</strong> PDF con una página por examen, o ZIP con imágenes JPG/PNG.</li>
+            <li><strong>Plantilla requerida:</strong> debe estar guardada. Si aún no tienes una, corrígela primero en la pestaña Individual.</li>
+            <li><strong>Revisión:</strong> los exámenes con confianza baja (&lt;80%) se marcarn ⚠️ para revisión manual al finalizar.</li>
+          </ul>
+        </details>
+
+        <form (submit)="onBatchSubmit($event)" class="panel">
+          <label>Plantilla guardada (requerida)</label>
+          <select [ngModel]="batchTemplateId()" (ngModelChange)="batchTemplateId.set($event)" name="batch_template_id">
+            <option value="">Seleccionar plantilla...</option>
+            @for (t of templatesResource.value() ?? []; track t.id) {
+              <option [value]="t.id">{{ t.name }}</option>
+            }
+          </select>
+
+          <label>Exámenes (PDF una página por examen, o ZIP de imágenes)</label>
+          <div class="drop-zone" [class.dz-active]="batchDrop()"
+               (click)="batchInput.click()"
+               (dragover)="$event.preventDefault(); batchDrop.set(true)"
+               (dragleave)="batchDrop.set(false)"
+               (drop)="onBatchDrop($event)">
+            <input #batchInput type="file" accept=".pdf,.zip" (change)="onBatchFile($event)" />
+            <span>{{ batchFile()?.name ?? 'Arrastra aquí o haz clic' }}</span>
+          </div>
+
+          <button type="submit" [disabled]="batchLoading()">Iniciar corrección en lote</button>
+        </form>
+
+        <p class="status">{{ batchStatus() }}</p>
+        @if (batchLoading() || batchFinished()) {
+          <div class="progress-track"><div class="progress-fill" [style.width.%]="batchProgress()"></div></div>
+        }
+        @if (batchLoading() && batchCurrentItem()) {
+          <p class="current-item">Corrigiendo: <strong>{{ batchCurrentItem() }}</strong></p>
+        }
+        @if (batchFinished()) {
+          <a class="download-btn" [href]="batchResultUrl()" download>Descargar CSV</a>
+        }
+
+        @if (batchItems().length > 0) {
+          <table class="batch-table">
+            <thead>
+              <tr>
+                <th>Archivo</th><th>Alumno</th><th>Puntos</th><th>%</th><th>Confianza</th><th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (item of batchItems(); track item.filename) {
+                <tr [class.row-error]="item.status === 'error'"
+                    [class.row-done]="item.status === 'done' && !item.needs_review"
+                    [class.row-review]="item.needs_review && !item.reviewed"
+                    [class.row-reviewed]="item.needs_review && item.reviewed">
+                  <td>{{ item.filename }}</td>
+                  <td>{{ item.nombre ?? '' }}</td>
+                  <td>{{ item.status === 'done' ? (item.total_puntos + '/' + item.max_puntos) : '' }}</td>
+                  <td>{{ item.status === 'done' ? (item.porcentaje_puntos + '%') : '' }}</td>
+                  <td [class.conf-low]="item.confidence != null && item.confidence < 0.8">
+                    {{ item.confidence != null ? ((item.confidence * 100 | number:'1.0-0') + '%') : '' }}
+                  </td>
+                  <td>
+                    @if (item.needs_review && !item.reviewed) {
+                      <span class="review-badge">⚠️ revisar</span>
+                    } @else if (item.needs_review && item.reviewed) {
+                      <span class="reviewed-badge">✓ revisado</span>
+                    } @else if (item.status === 'done') {
+                      <span class="ok-badge">✓</span>
+                    } @else if (item.status === 'error') {
+                      <span class="error-badge" [title]="item.error ?? ''">error</span>
+                    } @else if (item.status === 'processing') {
+                      <span class="processing">...</span>
+                    } @else {
+                      <span class="muted-text">pendiente</span>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+
+        @if (reviewItems().length > 0) {
+          <section class="panel review-panel">
+            <h2 class="section-title">
+              Cola de revisión
+              @if (batchNeedsReview() > 0) {
+                <span class="review-count">{{ batchNeedsReview() }} pendientes</span>
+              }
+            </h2>
+            @for (item of reviewItems(); track item.idx) {
+              <div class="review-item" [class.review-item-done]="item.reviewed">
+                <div class="review-header" (click)="toggleReview(item.idx)">
+                  <span class="review-filename">{{ item.filename }}</span>
+                  <span class="review-meta">
+                    {{ item.nombre }} · {{ item.total_puntos }}/{{ item.max_puntos }} ·
+                    confianza {{ (item.confidence * 100 | number:'1.0-0') + '%' }}
+                  </span>
+                  @if (!item.reviewed) {
+                    <button type="button" class="review-btn" (click)="$event.stopPropagation(); markReviewed(item.idx)">
+                      Marcar revisado
+                    </button>
+                  } @else {
+                    <span class="reviewed-badge">✓ revisado</span>
+                  }
+                </div>
+                @if (expandedReviewIdx() === item.idx) {
+                  <table class="review-answers">
+                    <thead>
+                      <tr><th>Pregunta</th><th>Dada</th><th>Correcta</th><th>Estado</th><th>Confianza</th></tr>
+                    </thead>
+                    <tbody>
+                      @for (row of item.feedback; track row.pregunta_label) {
+                        <tr [class.low-conf]="row.confianza < 0.8">
+                          <td>{{ row.pregunta_label }}</td>
+                          <td>{{ row.respuesta_dada }}</td>
+                          <td>{{ row.respuesta_correcta }}</td>
+                          <td>
+                            {{ row.estado }}
+                            @if (row.confianza < 0.8) { <span class="conf-warn">⚠️</span> }
+                          </td>
+                          <td [class.conf-low]="row.confianza < 0.8">
+                            {{ (row.confianza * 100 | number:'1.0-0') + '%' }}
+                          </td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                }
+              </div>
+            }
+          </section>
+        }
+      }
+
+      <!-- ══════════════════════════════════════════════
+           TAB: Plantillas
+      ══════════════════════════════════════════════ -->
+      @if (activeTab() === 'templates') {
         <section class="panel">
-          <h2>{{ r.total_puntos }}/{{ r.max_puntos }}</h2>
-          <p>{{ r.porcentaje_puntos || 0 }}% según regla aplicada</p>
-          @if (r.nombre) {
-            <p>Alumno: {{ r.nombre }}</p>
-          }
-          @if (r.warning) {
-            <p class="warn">{{ r.warning }}</p>
-          }
-          @if (r.feedback?.length) {
+          @if (templatesResource.isLoading()) {
+            <p class="muted-text">Cargando...</p>
+          } @else if ((templatesResource.value() ?? []).length === 0) {
+            <p class="muted-text">No hay plantillas guardadas. Corrígete un examen en la pestaña Individual con "Guardar plantilla" activado.</p>
+          } @else {
             <table>
               <thead>
-                <tr>
-                  <th>Pregunta</th>
-                  <th>Dada</th>
-                  <th>Correcta</th>
-                  <th>Estado</th>
-                </tr>
+                <tr><th>Nombre</th><th>Guardada</th><th></th></tr>
               </thead>
               <tbody>
-                @for (row of r.feedback; track row.pregunta_label) {
+                @for (t of templatesResource.value() ?? []; track t.id) {
                   <tr>
-                    <td>{{ row.pregunta_label }}</td>
-                    <td>{{ row.respuesta_dada }}</td>
-                    <td>{{ row.respuesta_correcta }}</td>
-                    <td>{{ row.estado }}</td>
+                    <td>{{ t.name }}</td>
+                    <td class="muted-text">{{ t.created_at * 1000 | date:'dd/MM/yyyy HH:mm' }}</td>
+                    <td><button class="btn-danger" type="button" (click)="deleteTemplate(t.id)">Eliminar</button></td>
                   </tr>
                 }
               </tbody>
             </table>
           }
-        </section>
-      }
-
-      <form (submit)="onBatchSubmit($event)" class="panel">
-        <h2 class="section-title">Corrección en lote</h2>
-
-        <label>Plantilla guardada (requerida)</label>
-        <select [ngModel]="batchTemplateId()" (ngModelChange)="batchTemplateId.set($event)" name="batch_template_id">
-          <option value="">Seleccionar plantilla...</option>
-          @for (t of templatesResource.value() ?? []; track t.id) {
-            <option [value]="t.id">{{ t.name }}</option>
-          }
-        </select>
-
-        <label>Exámenes (PDF con una página por examen, o ZIP con imágenes JPG/PNG)</label>
-        <input type="file" (change)="onBatchFile($event)" accept=".pdf,.zip" />
-
-        <button type="submit" [disabled]="batchLoading()">Iniciar corrección en lote</button>
-      </form>
-
-      <p class="status">{{ batchStatus() }}</p>
-      @if (batchLoading() || batchFinished()) {
-        <div class="progress-track">
-          <div class="progress-fill" [style.width.%]="batchProgress()"></div>
-        </div>
-      }
-      @if (batchLoading() && batchCurrentItem()) {
-        <p class="current-item">Corrigiendo: <strong>{{ batchCurrentItem() }}</strong></p>
-      }
-      @if (batchFinished()) {
-        <a class="download-btn" [href]="batchResultUrl()" download>Descargar CSV</a>
-      }
-      @if (batchItems().length > 0) {
-        <table class="batch-table">
-          <thead>
-            <tr>
-              <th>Archivo</th>
-              <th>Alumno</th>
-              <th>Puntos</th>
-              <th>%</th>
-              <th>Confianza</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (item of batchItems(); track item.filename) {
-              <tr [class.row-error]="item.status === 'error'"
-                  [class.row-done]="item.status === 'done' && !item.needs_review"
-                  [class.row-review]="item.needs_review && !item.reviewed"
-                  [class.row-reviewed]="item.needs_review && item.reviewed">
-                <td>{{ item.filename }}</td>
-                <td>{{ item.nombre ?? '' }}</td>
-                <td>{{ item.status === 'done' ? (item.total_puntos + '/' + item.max_puntos) : '' }}</td>
-                <td>{{ item.status === 'done' ? (item.porcentaje_puntos + '%') : '' }}</td>
-                <td>{{ item.confidence != null ? (item.confidence * 100 | number:'1.0-0') + '%' : '' }}</td>
-                <td>
-                  @if (item.needs_review && !item.reviewed) { <span class="review-badge">revisar</span> }
-                  @else if (item.needs_review && item.reviewed) { <span class="reviewed-badge">revisado</span> }
-                  @else if (item.status === 'done') { ok }
-                  @else if (item.status === 'error') { <span class="warn" [title]="item.error ?? ''">error</span> }
-                  @else if (item.status === 'processing') { <span class="processing">...</span> }
-                  @else { pendiente }
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      }
-
-      @if (reviewItems().length > 0) {
-        <section class="panel review-panel">
-          <h2 class="section-title">
-            Cola de revisión
-            @if (batchNeedsReview() > 0) { <span class="review-count">{{ batchNeedsReview() }} pendientes</span> }
-          </h2>
-          @for (item of reviewItems(); track item.idx) {
-            <div class="review-item" [class.review-item-done]="item.reviewed">
-              <div class="review-header" (click)="toggleReview(item.idx)">
-                <span class="review-filename">{{ item.filename }}</span>
-                <span class="review-meta">{{ item.nombre }} · {{ item.total_puntos }}/{{ item.max_puntos }} · confianza {{ (item.confidence * 100 | number:'1.0-0') + '%' }}</span>
-                @if (!item.reviewed) {
-                  <button type="button" class="review-btn" (click)="$event.stopPropagation(); markReviewed(item.idx)">Marcar revisado</button>
-                } @else {
-                  <span class="reviewed-badge">revisado</span>
-                }
-              </div>
-              @if (expandedReviewIdx() === item.idx) {
-                <table class="review-answers">
-                  <thead><tr><th>Pregunta</th><th>Dada</th><th>Correcta</th><th>Estado</th><th>Confianza</th></tr></thead>
-                  <tbody>
-                    @for (row of item.feedback; track row.pregunta_label) {
-                      <tr [class.low-confidence]="row.confianza < 0.8">
-                        <td>{{ row.pregunta_label }}</td>
-                        <td>{{ row.respuesta_dada }}</td>
-                        <td>{{ row.respuesta_correcta }}</td>
-                        <td>{{ row.estado }}</td>
-                        <td [class.warn]="row.confianza < 0.8">{{ (row.confianza * 100 | number:'1.0-0') + '%' }}</td>
-                      </tr>
-                    }
-                  </tbody>
-                </table>
-              }
-            </div>
+          @if (templateDeleteError()) {
+            <p class="error-text">{{ templateDeleteError() }}</p>
           }
         </section>
       }
@@ -202,53 +304,124 @@ const POLL_INTERVAL_MS = 1500;
   `,
   styles: [`
     .layout { max-width: 860px; margin: 0 auto; padding: 24px; }
-    .subtitle { color: #888; font-size: 14px; margin: 4px 0 16px; }
-    .help-panel { border: 1px solid #2a2a2a; background: #111; padding: 12px 16px; margin-bottom: 4px; font-size: 13px; color: #aaa; }
-    .help-panel summary { cursor: pointer; color: #888; font-size: 13px; user-select: none; }
-    .help-panel summary:hover { color: #ccc; }
+    h1 { margin: 0 0 4px; font-size: 20px; }
+    .subtitle { color: var(--text-muted); font-size: 14px; margin: 4px 0 16px; }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tabs button {
+      padding: 8px 20px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: -1px;
+    }
+    .tabs button:hover { color: var(--text-nav); }
+    .tabs button.tab-active { color: var(--text); border-bottom-color: var(--ok); }
+
+    /* ── Help panel ── */
+    .help-panel { border: 1px solid var(--border); background: var(--bg-input); padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: var(--text-nav); }
+    .help-panel summary { cursor: pointer; color: var(--text-muted); font-size: 13px; user-select: none; }
+    .help-panel summary:hover { color: var(--text-nav); }
     .help-panel ul { margin: 10px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
     .help-panel li { line-height: 1.5; }
-    .help-panel strong { color: #ccc; }
-    .panel { border: 1px solid #222; background: #141414; padding: 16px; margin-top: 16px; display: grid; gap: 10px; }
-    label { font-size: 12px; color: #999; }
-    select, input, button { padding: 10px; background: #0f0f0f; color: #e8e8e8; border: 1px solid #2a2a2a; }
-    button { cursor: pointer; }
+    .help-panel strong { color: var(--text); }
+
+    /* ── Form panel ── */
+    .panel { border: 1px solid var(--border); background: var(--bg-surface); padding: 16px; margin-top: 16px; display: grid; gap: 10px; }
+    label { font-size: 12px; color: var(--text-muted); }
+    select, input[type="text"], input[type="email"] {
+      padding: 10px; background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
+    }
     .check { display: flex; align-items: center; gap: 8px; }
-    .status { min-height: 20px; color: #9a9a9a; }
-    .progress-track { height: 4px; background: #222; margin-top: 4px; }
-    .progress-fill { height: 100%; background: #5a9; transition: width 0.4s ease; }
-    .warn { color: #ff9e9e; }
+    button[type="submit"], button[type="button"]:not(.review-btn):not(.btn-danger) {
+      padding: 10px; background: var(--bg-input); color: var(--text); border: 1px solid var(--border); cursor: pointer;
+    }
+    button:hover { border-color: var(--border-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 1px dashed var(--border);
+      padding: 20px 16px;
+      text-align: center;
+      cursor: pointer;
+      background: var(--bg-input);
+      color: var(--text-muted);
+      font-size: 13px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .drop-zone:hover, .drop-zone.dz-active {
+      border-color: var(--ok);
+      background: var(--ok-bg);
+      color: var(--ok);
+    }
+    .drop-zone input { display: none; }
+
+    /* ── Status / progress ── */
+    .status { min-height: 20px; color: var(--text-muted); font-size: 13px; }
+    .progress-track { height: 4px; background: var(--border); margin-top: 4px; }
+    .progress-fill  { height: 100%; background: var(--ok); transition: width 0.4s ease; }
+    .current-item { font-size: 13px; color: var(--text-nav); margin-top: 8px; }
+
+    /* ── Result panel ── */
+    .result-panel { margin-top: 16px; }
+    .score-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+    .score { font-size: 28px; font-weight: 700; color: var(--text); }
+    .score-pct { font-size: 16px; color: var(--text-muted); }
+    .result-meta { margin: 0; font-size: 13px; color: var(--text-muted); }
+    .result-warn { margin: 4px 0 0; font-size: 13px; color: var(--warn); }
+
+    /* ── Tables ── */
     table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid #333; text-align: left; padding: 8px; font-size: 13px; }
+    th, td { border-bottom: 1px solid var(--border); text-align: left; padding: 8px; font-size: 13px; }
+    th { color: var(--text-muted); font-weight: 500; }
+    .low-conf { background: var(--warn-bg); }
+    .conf-warn { margin-left: 4px; }
+    .conf-low { color: var(--warn); font-weight: 600; }
     .section-title { margin: 0; font-size: 16px; font-weight: 600; }
-    .download-btn { display: inline-block; margin-top: 12px; padding: 10px 16px; background: #1a3a2a; border: 1px solid #2a5a3a; color: #5a9; text-decoration: none; font-size: 13px; }
-    .current-item { font-size: 13px; color: #aaa; margin-top: 8px; }
-    .batch-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    .batch-table th, .batch-table td { border-bottom: 1px solid #333; text-align: left; padding: 8px; font-size: 13px; }
-    .row-done td:first-child { color: #e8e8e8; }
+
+    /* ── Batch table ── */
+    .batch-table th, .batch-table td { border-bottom: 1px solid var(--border); text-align: left; padding: 8px; font-size: 13px; }
     .row-error { opacity: 0.7; }
-    .row-review { background: #2a1f00; }
+    .row-review td { background: var(--warn-bg); }
     .row-reviewed { opacity: 0.6; }
-    .processing { color: #9a9; }
-    .review-badge { color: #f5a623; font-size: 12px; font-weight: 600; }
-    .reviewed-badge { color: #5a9; font-size: 12px; }
+    .processing { color: var(--ok); }
+    .review-badge  { color: var(--warn);   font-size: 12px; font-weight: 600; }
+    .reviewed-badge { color: var(--ok);    font-size: 12px; }
+    .ok-badge      { color: var(--ok);    font-size: 12px; }
+    .error-badge   { color: var(--danger); font-size: 12px; }
+    .muted-text    { color: var(--text-muted); }
+    .error-text    { color: var(--danger); font-size: 13px; margin-top: 8px; }
+
+    /* ── Download button ── */
+    .download-btn { display: inline-block; margin-top: 12px; padding: 10px 16px; background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok); text-decoration: none; font-size: 13px; }
+
+    /* ── Review queue ── */
     .review-panel { margin-top: 16px; }
-    .review-count { font-size: 13px; font-weight: normal; color: #f5a623; margin-left: 8px; }
-    .review-item { border: 1px solid #2a2000; margin-bottom: 8px; }
-    .review-item-done { border-color: #1a2a1a; opacity: 0.7; }
-    .review-header { display: flex; align-items: center; gap: 12px; padding: 10px; cursor: pointer; background: #1a1500; flex-wrap: wrap; }
-    .review-header:hover { background: #221c00; }
-    .review-filename { font-size: 13px; color: #ccc; flex-shrink: 0; }
-    .review-meta { font-size: 12px; color: #888; flex: 1; }
-    .review-btn { padding: 4px 10px; font-size: 12px; background: #2a1f00; border: 1px solid #f5a623; color: #f5a623; cursor: pointer; flex-shrink: 0; }
+    .review-count { font-size: 13px; font-weight: normal; color: var(--warn); margin-left: 8px; }
+    .review-item { border: 1px solid var(--warn-border); margin-bottom: 8px; }
+    .review-item-done { border-color: var(--ok-border); opacity: 0.7; }
+    .review-header { display: flex; align-items: center; gap: 12px; padding: 10px; cursor: pointer; background: var(--warn-bg); flex-wrap: wrap; }
+    .review-header:hover { filter: brightness(1.2); }
+    .review-filename { font-size: 13px; color: var(--text); flex-shrink: 0; }
+    .review-meta { font-size: 12px; color: var(--text-muted); flex: 1; }
+    .review-btn { padding: 4px 10px; font-size: 12px; background: var(--warn-bg); border: 1px solid var(--warn); color: var(--warn); cursor: pointer; flex-shrink: 0; }
     .review-answers { width: 100%; border-collapse: collapse; }
-    .review-answers th, .review-answers td { border-bottom: 1px solid #2a2a2a; padding: 6px 10px; font-size: 12px; text-align: left; }
-    .low-confidence { background: #1f1500; }
-    .low-confidence .warn { font-weight: 600; }
-  `]
+    .review-answers th, .review-answers td { border-bottom: 1px solid var(--border); padding: 6px 10px; font-size: 12px; text-align: left; }
+
+    /* ── Buttons ── */
+    .btn-danger { padding: 6px 10px; background: var(--bg-input); border: 1px solid var(--danger-border); color: var(--danger); cursor: pointer; font-size: 12px; }
+    .btn-danger:hover { background: var(--danger-bg); }
+  `],
 })
 export class ExamCorrectorPageComponent {
   private api = inject(ExamCorrectorApiService);
+
+  activeTab = signal<Tab>('single');
 
   // Single-exam signals
   selectedTemplateId = signal('__upload__');
@@ -260,6 +433,11 @@ export class ExamCorrectorPageComponent {
   status = signal('');
   progressValue = signal(0);
   result = signal<any>(null);
+
+  // Drop-zone active states
+  templateDrop = signal(false);
+  examDrop = signal(false);
+  batchDrop = signal(false);
 
   // Batch signals
   batchTemplateId = signal('');
@@ -296,13 +474,18 @@ export class ExamCorrectorPageComponent {
   }>>([]);
   expandedReviewIdx = signal<number | null>(null);
 
+  // Template tab
+  templateDeleteError = signal('');
+
   templatesResource = resource({
-    loader: () => this.api.listTemplates().then(r => r.templates ?? [])
+    loader: () => this.api.listTemplates().then(r => r.templates ?? []),
   });
 
   batchResultUrl(): string {
     return this.api.batchResultUrl(this.batchId());
   }
+
+  // ── File handlers ───────────────────────────────────────
 
   onTemplateChange(id: string) {
     this.selectedTemplateId.set(id);
@@ -311,32 +494,52 @@ export class ExamCorrectorPageComponent {
 
   onTemplateFile(ev: Event) {
     this.templateFile.set((ev.target as HTMLInputElement).files?.[0] ?? null);
+    this.templateDrop.set(false);
   }
 
   onExamFile(ev: Event) {
     this.examFile.set((ev.target as HTMLInputElement).files?.[0] ?? null);
+    this.examDrop.set(false);
   }
 
   onBatchFile(ev: Event) {
     this.batchFile.set((ev.target as HTMLInputElement).files?.[0] ?? null);
+    this.batchDrop.set(false);
   }
+
+  onTemplateDrop(ev: DragEvent) {
+    ev.preventDefault();
+    this.templateDrop.set(false);
+    const file = ev.dataTransfer?.files?.[0];
+    if (file) this.templateFile.set(file);
+  }
+
+  onExamDrop(ev: DragEvent) {
+    ev.preventDefault();
+    this.examDrop.set(false);
+    const file = ev.dataTransfer?.files?.[0];
+    if (file) this.examFile.set(file);
+  }
+
+  onBatchDrop(ev: DragEvent) {
+    ev.preventDefault();
+    this.batchDrop.set(false);
+    const file = ev.dataTransfer?.files?.[0];
+    if (file) this.batchFile.set(file);
+  }
+
+  // ── Single-exam flow ────────────────────────────────────
 
   async onSubmit(ev: Event) {
     ev.preventDefault();
-    if (!this.examFile()) {
-      this.status.set('Selecciona un examen.');
-      return;
-    }
+    if (!this.examFile()) { this.status.set('Selecciona un examen.'); return; }
     if (this.selectedTemplateId() === '__upload__' && !this.templateFile()) {
-      this.status.set('Selecciona una plantilla o usa una guardada.');
-      return;
+      this.status.set('Selecciona una plantilla o usa una guardada.'); return;
     }
-
     this.loading.set(true);
     this.result.set(null);
     this.progressValue.set(0);
     this.status.set('Subiendo archivos...');
-
     const fd = new FormData();
     fd.append('examen', this.examFile()!);
     fd.append('template_id', this.selectedTemplateId());
@@ -344,7 +547,6 @@ export class ExamCorrectorPageComponent {
     fd.append('save_template', this.saveTemplate() ? '1' : '0');
     const tf = this.templateFile();
     if (tf) fd.append('plantilla', tf);
-
     try {
       const start = await this.api.startCorrection(fd);
       if (!start.ok || !start.job_id) throw new Error(start.error || 'No se pudo iniciar la corrección.');
@@ -363,9 +565,9 @@ export class ExamCorrectorPageComponent {
         this.loading.set(false);
         return;
       }
-      const status = await this.api.getStatus(jobId);
-      if (!status.ok && status.error) throw new Error(status.error);
-      if (status.status === 'done') {
+      const s = await this.api.getStatus(jobId);
+      if (!s.ok && s.error) throw new Error(s.error);
+      if (s.status === 'done') {
         const res = await this.api.getResult(jobId);
         if (!res.ok) throw new Error(res.error || 'No se pudo obtener el resultado.');
         this.result.set(res.result);
@@ -375,24 +577,19 @@ export class ExamCorrectorPageComponent {
         this.templatesResource.reload();
         return;
       }
-      if (status.status === 'error') throw new Error(status.error || 'Error en procesamiento.');
-      this.progressValue.set(status.progress ?? 0);
-      this.status.set(`${status.progress ?? 0}% · ${status.message || 'Procesando...'}`);
+      if (s.status === 'error') throw new Error(s.error || 'Error en procesamiento.');
+      this.progressValue.set(s.progress ?? 0);
+      this.status.set(`${s.progress ?? 0}% · ${s.message || 'Procesando...'}`);
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
     }
   }
 
+  // ── Batch flow ──────────────────────────────────────────
+
   async onBatchSubmit(ev: Event) {
     ev.preventDefault();
-    if (!this.batchTemplateId()) {
-      this.batchStatus.set('Selecciona una plantilla guardada.');
-      return;
-    }
-    if (!this.batchFile()) {
-      this.batchStatus.set('Selecciona un archivo PDF o ZIP.');
-      return;
-    }
-
+    if (!this.batchTemplateId()) { this.batchStatus.set('Selecciona una plantilla guardada.'); return; }
+    if (!this.batchFile()) { this.batchStatus.set('Selecciona un archivo PDF o ZIP.'); return; }
     this.batchLoading.set(true);
     this.batchFinished.set(false);
     this.batchProgress.set(0);
@@ -402,11 +599,9 @@ export class ExamCorrectorPageComponent {
     this.expandedReviewIdx.set(null);
     this.batchNeedsReview.set(0);
     this.batchStatus.set('Subiendo archivo...');
-
     const fd = new FormData();
     fd.append('template_id', this.batchTemplateId());
     fd.append('examenes', this.batchFile()!);
-
     try {
       const start = await this.api.startBatch(fd);
       if (!start.ok || !start.batch_id) throw new Error(start.error || 'No se pudo iniciar el lote.');
@@ -416,16 +611,6 @@ export class ExamCorrectorPageComponent {
       this.batchStatus.set(`Error: ${e.message || e}`);
       this.batchLoading.set(false);
     }
-  }
-
-  async markReviewed(idx: number) {
-    await this.api.markReviewed(this.batchId(), idx);
-    this.reviewItems.update(items => items.map(i => i.idx === idx ? { ...i, reviewed: true } : i));
-    this.batchNeedsReview.update(n => Math.max(0, n - 1));
-  }
-
-  toggleReview(idx: number) {
-    this.expandedReviewIdx.update(cur => cur === idx ? null : idx);
   }
 
   async pollBatch(batchId: string) {
@@ -451,14 +636,42 @@ export class ExamCorrectorPageComponent {
         this.batchLoading.set(false);
         this.batchFinished.set(true);
         const reviewNote = s.needs_review ? `, ${s.needs_review} para revisar` : '';
-        this.batchStatus.set(`Lote completado: ${s.done} correctos, ${s.failed} errores${reviewNote}.`);
+        const summary = `Lote completado: ${s.done} correctos, ${s.failed} errores${reviewNote}.`;
+        this.batchStatus.set(summary);
         if (s.needs_review) {
           const rev = await this.api.getReviewItems(batchId);
           if (rev.ok) this.reviewItems.set(rev.items);
         }
+        window.dispatchEvent(new CustomEvent('app-toast', {
+          bubbles: true,
+          detail: { message: summary, type: s.needs_review ? 'warn' : 'ok' },
+        }));
         return;
       }
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    }
+  }
+
+  async markReviewed(idx: number) {
+    await this.api.markReviewed(this.batchId(), idx);
+    this.reviewItems.update(items => items.map(i => i.idx === idx ? { ...i, reviewed: true } : i));
+    this.batchNeedsReview.update(n => Math.max(0, n - 1));
+  }
+
+  toggleReview(idx: number) {
+    this.expandedReviewIdx.update(cur => cur === idx ? null : idx);
+  }
+
+  // ── Templates tab ───────────────────────────────────────
+
+  async deleteTemplate(id: string) {
+    this.templateDeleteError.set('');
+    try {
+      const res = await this.api.deleteTemplate(id);
+      if (!res.ok) { this.templateDeleteError.set('No se pudo eliminar la plantilla.'); return; }
+      this.templatesResource.reload();
+    } catch {
+      this.templateDeleteError.set('Error al conectar con el servidor.');
     }
   }
 }

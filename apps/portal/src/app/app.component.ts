@@ -1,11 +1,12 @@
 import { Component, CUSTOM_ELEMENTS_SCHEMA, inject, OnInit, signal } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { UserService } from './services/user.service';
+import { ToastContainerComponent } from './components/toast-container.component';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, ToastContainerComponent],
   schemas: [CUSTOM_ELEMENTS_SCHEMA],
   template: `
     @if (checkingAuth()) {
@@ -25,6 +26,7 @@ import { UserService } from './services/user.service';
     } @else {
       <router-outlet></router-outlet>
     }
+    <app-toast-container />
   `,
   styles: [`
     .gate {

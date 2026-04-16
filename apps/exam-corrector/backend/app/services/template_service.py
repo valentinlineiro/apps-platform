@@ -105,6 +105,25 @@ def registrar_template_guardada(src_path: str, template_name: str = "") -> dict:
     return item
 
 
+def eliminar_template(template_id: str) -> bool:
+    """Remove a saved template by id. Returns True if found and removed."""
+    items = cargar_template_library()
+    remaining = [i for i in items if i.get("id") != template_id]
+    if len(remaining) == len(items):
+        return False
+    # Delete the file on disk if present
+    removed = [i for i in items if i.get("id") == template_id]
+    for item in removed:
+        path = os.path.join(config.TEMPLATE_STORE_DIR, item.get("filename", ""))
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    guardar_template_library(remaining)
+    return True
+
+
 def obtener_ruta_template_por_id(template_id: str) -> str:
     for item in cargar_template_library():
         if item.get("id") == template_id:
