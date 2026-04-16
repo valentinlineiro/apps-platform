@@ -22,10 +22,10 @@ import {
     <div #elementHost></div>
   `,
   styles: [`
-    .status { padding: 24px; color: #666; font-size: 14px; }
-    .error-box { padding: 24px; border: 1px solid #3a1a1a; background: #1a0f0f; max-width: 480px; margin: 24px; }
-    .error-title { margin: 0 0 6px; font-size: 14px; color: #f88; }
-    .error-hint { margin: 0; font-size: 13px; color: #888; }
+    .status { padding: 24px; color: var(--text-dim); font-size: 14px; }
+    .error-box { padding: 24px; border: 1px solid var(--danger-border); background: var(--danger-bg); max-width: 480px; margin: 24px; }
+    .error-title { margin: 0 0 6px; font-size: 14px; color: var(--danger); }
+    .error-hint { margin: 0; font-size: 13px; color: var(--text-muted); }
   `]
 })
 export class MicroFrontendLoaderComponent implements AfterViewInit {

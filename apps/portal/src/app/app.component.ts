@@ -30,7 +30,7 @@ import { UserService } from './services/user.service';
     .gate {
       margin: 80px auto;
       max-width: 420px;
-      color: #666;
+      color: var(--text-dim);
       font-size: 14px;
       padding: 0 28px;
     }
@@ -38,22 +38,22 @@ import { UserService } from './services/user.service';
       margin: 80px auto;
       max-width: 420px;
       padding: 32px;
-      border: 1px solid #2a2a2a;
-      background: #141414;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
-    .gate-title { margin: 0; font-size: 20px; color: #e8e8e8; }
-    .gate-sub { margin: 0; font-size: 14px; color: #888; }
-    .gate-error { margin: 0; font-size: 14px; color: #ff9e9e; }
+    .gate-title { margin: 0; font-size: 20px; color: var(--text); }
+    .gate-sub { margin: 0; font-size: 14px; color: var(--text-muted); }
+    .gate-error { margin: 0; font-size: 14px; color: var(--danger); }
     .login-btn {
       display: inline-block;
       margin-top: 4px;
       padding: 10px 20px;
-      background: #1a2a1a;
-      border: 1px solid #2a5a2a;
-      color: #5a9;
+      background: var(--ok-bg);
+      border: 1px solid var(--ok-border);
+      color: var(--ok);
       text-decoration: none;
       font-size: 14px;
       align-self: flex-start;

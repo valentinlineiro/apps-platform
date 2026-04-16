@@ -240,6 +240,34 @@ def _init_db() -> None:
                 )
                 """
             )
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS plugins (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    description TEXT NOT NULL DEFAULT '',
+                    icon TEXT NOT NULL DEFAULT '📦',
+                    visibility TEXT NOT NULL DEFAULT 'internal',
+                    created_at {_FLOAT} NOT NULL,
+                    updated_at {_FLOAT} NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS plugin_versions (
+                    id {_AUTO_PK},
+                    plugin_id TEXT NOT NULL,
+                    version TEXT NOT NULL DEFAULT '1.0.0',
+                    manifest_json TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'published',
+                    published_at {_FLOAT} NOT NULL,
+                    created_at {_FLOAT} NOT NULL,
+                    UNIQUE(plugin_id, version),
+                    FOREIGN KEY(plugin_id) REFERENCES plugins(id)
+                )
+                """
+            )
             conn.executemany(
                 "INSERT INTO roles(name) VALUES (?) ON CONFLICT(name) DO NOTHING",
                 [("owner",), ("admin",), ("member",), ("viewer",)],
@@ -279,12 +307,43 @@ def _install_plugin(conn, tenant_id: str, plugin_id: str, installed_by: str | No
     )
 
 
+def _sync_plugin_from_manifest(conn, manifest: dict, now: float) -> None:
+    """Upsert a plugin and its latest version from a manifest dict."""
+    plugin_id = manifest["id"]
+    name = manifest.get("name", plugin_id)
+    description = manifest.get("description", "")
+    icon = manifest.get("icon", "📦")
+    conn.execute(
+        f"""
+        INSERT INTO plugins (id, name, description, icon, visibility, created_at, updated_at)
+        VALUES (?, ?, ?, ?, 'internal', ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            description = excluded.description,
+            icon = excluded.icon,
+            updated_at = excluded.updated_at
+        """,
+        (plugin_id, name, description, icon, now, now),
+    )
+    conn.execute(
+        """
+        INSERT INTO plugin_versions (plugin_id, version, manifest_json, status, published_at, created_at)
+        VALUES (?, '1.0.0', ?, 'published', ?, ?)
+        ON CONFLICT(plugin_id, version) DO UPDATE SET
+            manifest_json = excluded.manifest_json,
+            published_at = excluded.published_at
+        """,
+        (plugin_id, json.dumps(manifest), now, now),
+    )
+
+
 def _init_static_apps() -> None:
     if not os.path.exists(STATIC_APPS_FILE):
         return
     with open(STATIC_APPS_FILE) as f:
         manifests = json.load(f)
     app.logger.info(f"loading {len(manifests)} static app(s) from {STATIC_APPS_FILE}")
+    now = time.time()
     with _db() as conn:
         for manifest in manifests:
             conn.execute(
@@ -297,6 +356,7 @@ def _init_static_apps() -> None:
                 """,
                 (manifest["id"], json.dumps(manifest), _PINNED_HEARTBEAT),
             )
+            _sync_plugin_from_manifest(conn, manifest, now)
             # Auto-install non-disabled static apps into the default tenant
             if manifest.get("status") != "disabled":
                 _install_plugin(conn, DEFAULT_TENANT_ID, manifest["id"])
@@ -578,6 +638,7 @@ def register():
             """,
             (manifest["id"], json.dumps(manifest), now),
         )
+        _sync_plugin_from_manifest(conn, manifest, now)
         # Auto-install into default tenant on first registration
         _install_plugin(conn, DEFAULT_TENANT_ID, manifest["id"])
     return jsonify({"ok": True})
@@ -824,6 +885,44 @@ def uninstall_plugin(tenant_id: str, plugin_id: str):
     _log_audit(caller_id, "plugin_uninstalled", "plugin_install", plugin_id,
                {"tenant_id": tenant_id})
     return jsonify({"ok": True})
+
+
+@app.get("/api/catalog")
+@require_auth
+def get_catalog():
+    """Return all known plugins with an `installed` flag for the caller's tenant."""
+    user_id = session["user_id"]
+    membership = _get_tenant_membership(user_id)
+    if not membership:
+        return jsonify([])
+    tenant_id = membership["id"]
+    with _db() as conn:
+        rows = conn.execute(
+            """
+            SELECT p.id, p.name, p.description, p.icon, p.visibility,
+                   pv.version, pv.manifest_json,
+                   pi.status AS install_status
+            FROM plugins p
+            JOIN plugin_versions pv ON pv.plugin_id = p.id AND pv.status = 'published'
+            LEFT JOIN plugin_installs pi ON pi.plugin_id = p.id AND pi.tenant_id = ?
+            ORDER BY p.name
+            """,
+            (tenant_id,),
+        ).fetchall()
+    result = []
+    for row in rows:
+        result.append({
+            "plugin_id": row["id"],
+            "name": row["name"],
+            "description": row["description"],
+            "icon": row["icon"],
+            "visibility": row["visibility"],
+            "version": row["version"],
+            "manifest": json.loads(row["manifest_json"]),
+            "installed": row["install_status"] is not None,
+            "install_status": row["install_status"],
+        })
+    return jsonify(result)
 
 
 @app.get("/auth/login")

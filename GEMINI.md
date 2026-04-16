@@ -1,100 +1,102 @@
 # GEMINI.md
 
-This project is a monorepo-style platform orchestrator for a suite of integrated applications (Portal, Exam Corrector, Attendance Checker). It uses **Nx** for workspace management, Git submodules to manage application source code, and Docker Compose for local development and orchestration.
+This project is a monorepo-style platform orchestrator for a suite of integrated applications (**Portal**, **Exam Corrector**, **Attendance Checker**). It uses **Nx** for workspace management, Git submodules for app source code, and Docker Compose for orchestration.
 
-## Project Overview
+## 🚀 Project Overview
 
 *   **Type:** Monorepo Orchestrator (Nx Workspace).
 *   **Main Technologies:** 
     *   **Orchestrator:** Nx (Task running, dependency management).
-    *   **Frontend:** Angular 21 (Web Components / Angular Elements).
-    *   **Backend:** Flask (Python).
-    *   **Libraries:** Python SDK (Shared registration and observability logic).
-    *   **Infrastructure:** Docker, Docker Compose, Caddy (Ingress).
-    *   **Auth:** Keycloak (OIDC/OAuth2 with PKCE).
-    *   **Database:** PostgreSQL (Keycloak/Portal), SQLite (Registry).
-    *   **AI:** Gemini Vision API (for Exam Corrector).
+    *   **Frontend:** Angular 21 (Standalone, Signals, Zoneless) using **Web Components / Angular Elements** for MFEs.
+    *   **Backend:** Flask 3 (Python) with Blueprint-based routing.
+    *   **Libraries:** `platform-python-sdk` (Shared registration and observability logic).
+    *   **Infrastructure:** Docker, Caddy 2.7 (TLS/Ingress), Keycloak 26.2.2 (Auth), PostgreSQL 16.
+    *   **AI:** Gemini Vision API (integration in `exam-corrector`).
 
-## Building and Running
+## 🏗️ Architecture
+
+The platform follows a **"Heartbeat Registry"** model for dynamic service discovery and frontend composition.
+
+### Traffic Flow
+**Browser** → **Caddy** (TLS termination for `localhost`) → **Portal Nginx** → **App Backends** (Proxied and Auth-gated).
+
+### Heartbeat Registry
+1.  **App Backends** register themselves with the `portal-backend` at startup (`POST /api/registry/register`).
+2.  Apps send a **heartbeat** every 30 seconds (`POST /api/registry/heartbeat/<app_id>`).
+3.  The `portal-backend` evicts apps missing heartbeats (default TTL: 60s).
+4.  **Portal Frontend** fetches the active registry and dynamically loads apps as Web Components via `MicroFrontendLoaderComponent`.
+
+### Key Components
+*   `apps/portal/`: Central hub.
+    *   **Frontend:** Angular 21 shell that loads micro-frontends.
+    *   **Backend:** Flask API for registry management and OIDC/OAuth2 auth.
+*   `apps/exam-corrector/`: AI-powered OMR (Optical Mark Recognition).
+    *   **Backend:** OpenCV pipeline for async/batch exam correction.
+*   `apps/attendance-checker/`: Attendance tracking (WIP).
+    *   **Frontend:** Currently a placeholder Angular component.
+    *   **Backend:** Planned (not yet implemented).
+*   `libs/platform-python-sdk/`: Shared logic for:
+    *   **Registration:** Automatic portal registration and heartbeat loop.
+    *   **Observability:** JSON structured logging with request tracking and timing.
+
+## 🛠️ Development Workflow
 
 ### Prerequisites
-*   Node.js and npm (for Nx).
-*   Git, Docker, and Docker Compose.
-*   A Gemini API Key (for `exam-corrector`).
+*   Node.js (for Nx).
+*   Docker & Docker Compose.
+*   Gemini API Key (for `exam-corrector`).
 
-### Setup and Local Execution
-1.  **Clone with submodules:**
-    ```bash
-    git clone --recurse-submodules <REPO_URL>
-    ```
-    If already cloned without submodules:
-    ```bash
-    git submodule update --init --recursive
-    ```
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Environment Setup:**
-    ```bash
-    export GEMINI_API_KEY="your_api_key"
-    ```
-4.  **Start the platform:**
-    ```bash
-    docker compose up --build
-    ```
-
-### Running Tasks with Nx
-Use Nx to run tasks across projects:
+### Setup and Execution
 ```bash
-# Build a specific app
-npx nx build portal
+# Clone with submodules
+git clone --recurse-submodules <REPO_URL>
 
-# Run tests for the Python SDK
+# Start everything
+export GEMINI_API_KEY="your_api_key"
+docker compose up --build
+```
+
+### Local Access & Credentials
+*   **Portal:** `https://localhost`
+*   **Keycloak Admin:** `https://localhost/admin` (admin/admin)
+*   **Demo User:** `demo` / `demo123`
+
+### Scaffolding New Apps
+Use the provided script to generate a new app with frontend (Angular Element) and backend (Flask) boilerplate, automatically patching Nginx and Docker configurations:
+```bash
+./scaffold-app.sh <app-id> "<App Name>" "<Description>" [icon]
+```
+
+### Running Tasks (Nx)
+```bash
+# Build/Test specific projects
+npx nx build portal
 npx nx test platform-python-sdk
 
-# Build all projects
+# Run many
 npx nx run-many -t build
 ```
 
-### Accessing Services
-*   **Portal:** `http://localhost:4200`
-*   **Keycloak (Auth):** `http://localhost:8081` (Admin: `admin` / `admin`)
-*   **Default Demo User:** `demo` / `demo123`
+## 🔐 Auth & Security
 
-## Architecture
+*   **Provider:** Keycloak (OIDC/OAuth2 with PKCE).
+*   **Roles:** `owner`, `admin`, `member` (default), `viewer`.
+*   **Nginx Auth:** Internal subrequests (`/_auth`) gate access to app backend routes via `auth_request` module.
 
-The platform follows a **"Heartbeat Registry"** model:
-1.  **App Backends** register themselves with the `portal-backend` at startup (`POST /api/registry/register`).
-2.  Apps send a **heartbeat** every 30 seconds (`POST /api/registry/heartbeat/<app_id>`).
-3.  Static or frontend-only apps are registered via `apps/portal/backend/static_apps.json`.
-4.  The **Portal Frontend** dynamically loads apps as Web Components based on the registry.
+## 🤖 Agents & Skills
 
-### Project Locations
-*   `apps/portal/`: The central hub (Angular frontend) and auth/registry manager (Flask backend).
-*   `apps/exam-corrector/`: Gemini-powered exam analyzer (Frontend & Backend).
-*   `apps/attendance-checker/`: Attendance tracking application (Frontend only).
-*   `libs/platform-python-sdk/`: Shared Python library for registry integration and observability.
+This repository is optimized for **Gemini CLI** and contains custom agentic capabilities:
 
-## Development Conventions
+*   **Custom Skills:** Located in `.agents/skills/` (Nx-related, linking packages, CI monitoring).
+*   **CI Subagent:** `.github/agents/ci-monitor-subagent.agent.md` for self-healing CI pipelines.
 
-*   **Adding New Apps:** Use the `./scaffold-app.sh` script to create a new app structure and automatically patch the necessary configuration files.
-    ```bash
-    ./scaffold-app.sh <app-id> "<App Name>" "<Description>" [icon]
-    ```
-*   **Manifests:** Every app must expose a manifest providing its name, description, icon, route, and entry script. For Python apps, use the `platform-python-sdk` for automatic registration.
-*   **Routing:** 
-    *   In production/compose, Caddy and Nginx (in `portal`) handle path-based routing.
-    *   In development, `apps/portal/proxy.conf.json` maps local backend routes.
-*   **Code Style:**
-    *   **Angular:** Standalone components, signals, and zoneless change detection.
-    *   **Flask:** Blueprint-based routing and use of `platform-python-sdk` for registration.
+## 🧪 Testing
 
-## Key Files
-*   `nx.json`: Nx workspace configuration.
-*   `package.json`: Project dependencies and Nx scripts.
-*   `docker-compose.yml`: Main orchestration file for all services.
-*   `Caddyfile`: Ingress configuration for external access.
-*   `scaffold-app.sh`: Transition utility for generating new apps.
-*   `CLAUDE.md`: Comprehensive guide for AI assistants (detailed architecture).
-*   `.gitmodules`: Defines the submodule-based structure.
+*   **Python Backends:** Run `pytest` within the app's backend directory.
+*   **Frontend:** Use `npx nx test <project-name>`.
+
+## 📂 Key Files
+*   `CLAUDE.md`: Detailed architectural deep-dive for AI assistants.
+*   `Caddyfile`: Ingress and TLS configuration.
+*   `docker-compose.yml`: Main orchestration file.
+*   `apps/portal/nginx.conf`: Internal routing and auth-gating logic.

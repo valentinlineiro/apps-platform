@@ -9,6 +9,44 @@ body {
   margin: 0;
   padding: 0;
   font-family: "Segoe UI", Arial, sans-serif;
-  background: #0d0d0d;
-  color: #e8e8e8;
+  background: var(--bg-root);
+  color: var(--text);
+}
+
+:root {
+  /* ── Backgrounds ──────────────────────────── */
+  --bg-root:     #0d0d0d;
+  --bg-surface:  #141414;
+  --bg-elevated: #191919;
+  --bg-input:    #0f0f0f;
+
+  /* ── Borders ──────────────────────────────── */
+  --border:       #2a2a2a;
+  --border-hover: #3a3a3a;
+
+  /* ── Text ─────────────────────────────────── */
+  --text:      #e8e8e8;
+  --text-muted: #888;
+  --text-dim:   #666;
+  --text-nav:   #bbb;
+
+  /* ── Semantic: ok / success ───────────────── */
+  --ok:        #5a9;
+  --ok-bg:     #1a2a1a;
+  --ok-border: #2a4a2a;
+
+  /* ── Semantic: warning ────────────────────── */
+  --warn:        #f5a623;
+  --warn-bg:     #2a1f00;
+  --warn-border: #3a2d00;
+
+  /* ── Semantic: danger / error ─────────────── */
+  --danger:        #f88;
+  --danger-bg:     #1a0f0f;
+  --danger-border: #4a1a1a;
+
+  /* ── Semantic: info / accent ──────────────── */
+  --info:        #7ab;
+  --info-bg:     #1a1f2a;
+  --info-border: #2a3a4a;
 }
