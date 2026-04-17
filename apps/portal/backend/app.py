@@ -12,6 +12,13 @@ import requests as http_requests
 from flask import Flask, jsonify, redirect, request, session
 from flask_cors import CORS
 from platform_sdk.observability import setup_logging
+from adapters.sql.audit_repo import SqlAuditRepository
+from adapters.sql.plugin_repo import SqlPluginRepository
+from adapters.sql.tenant_repo import SqlTenantRepository
+from adapters.sql.user_repo import SqlUserRepository
+from adapters.routes.catalog import create_catalog_blueprint
+from adapters.routes.profile import create_profile_blueprint
+from adapters.routes.tenant_settings import create_tenant_settings_blueprint
 
 try:
     import psycopg2
@@ -536,35 +543,9 @@ def _log_audit(user_id: str | None, action: str, target_type: str | None = None,
         )
 
 
-@app.get("/api/audit")
-@require_auth
-def get_audit_log():
-    user_id = session["user_id"]
-    try:
-        limit = min(int(request.args.get("limit", 20)), 100)
-    except (TypeError, ValueError):
-        limit = 20
-    with _db() as conn:
-        rows = conn.execute(
-            """
-            SELECT id, action, target_type, target_id, created_at
-            FROM audit_logs
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            (user_id, limit),
-        ).fetchall()
-    return jsonify([
-        {
-            "id": row["id"],
-            "action": row["action"],
-            "resource_type": row["target_type"],
-            "resource_id": row["target_id"],
-            "created_at": row["created_at"],
-        }
-        for row in rows
-    ])
+# ── Audit / Catalog / Tenant settings / Tenant members ───────────────────────
+# Routes live in adapters/routes/catalog.py and adapters/routes/tenant_settings.py;
+# blueprints registered in _bootstrap().
 
 
 def _upsert_user(email: str, name: str, provider: str, provider_sub: str) -> str:
@@ -797,546 +778,12 @@ def unregister(app_id: str):
     return jsonify({"ok": True})
 
 
-# ── Tenant endpoints ──────────────────────────────────────────────────────────
 
-@app.get("/api/tenants/current")
-@require_auth
-def get_current_tenant():
-    user_id = session["user_id"]
-    membership = _get_tenant_membership(user_id)
-    if not membership:
-        return jsonify({"error": "not_a_tenant_member"}), 403
-    return jsonify(membership)
 
+# ── Profile & Preferences ─────────────────────────────────────────────────────
+# Routes live in adapters/routes/profile.py; blueprint registered below.
 
-@app.get("/api/tenants/<tenant_id>/members")
-@require_auth
-def list_tenant_members(tenant_id: str):
-    user_id = session["user_id"]
-    # Only members of the tenant can list its members
-    with _db() as conn:
-        caller = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, user_id),
-        ).fetchone()
-        if not caller:
-            return jsonify({"error": "forbidden"}), 403
-        rows = conn.execute(
-            """
-            SELECT u.id, u.email, u.name, tm.role, tm.created_at
-            FROM tenant_memberships tm
-            JOIN users u ON u.id = tm.user_id
-            WHERE tm.tenant_id = ?
-            ORDER BY tm.created_at
-            """,
-            (tenant_id,),
-        ).fetchall()
-    return jsonify([
-        {"id": r["id"], "email": r["email"], "name": r["name"],
-         "role": r["role"], "joined_at": r["created_at"]}
-        for r in rows
-    ])
 
-
-@app.post("/api/tenants/<tenant_id>/members")
-@require_auth
-def add_tenant_member(tenant_id: str):
-    caller_id = session["user_id"]
-    with _db() as conn:
-        caller = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, caller_id),
-        ).fetchone()
-    if not caller or caller["role"] not in ("owner", "admin"):
-        return jsonify({"error": "forbidden"}), 403
-
-    body = request.get_json(force=True) or {}
-    email = body.get("email", "").strip()
-    role = body.get("role", DEFAULT_ROLE)
-    if not email:
-        return jsonify({"error": "email is required"}), 400
-    if role not in ("owner", "admin", "member", "viewer"):
-        return jsonify({"error": "invalid role"}), 400
-
-    with _db() as conn:
-        target = conn.execute("SELECT id FROM users WHERE email = ?", (email,)).fetchone()
-        if not target:
-            return jsonify({"error": "user_not_found"}), 404
-        conn.execute(
-            """
-            INSERT INTO tenant_memberships (tenant_id, user_id, role, created_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(tenant_id, user_id) DO UPDATE SET role = excluded.role
-            """,
-            (tenant_id, target["id"], role, time.time()),
-        )
-    _log_audit(caller_id, "tenant_member_added", "tenant", tenant_id,
-               {"email": email, "role": role})
-    return jsonify({"ok": True})
-
-
-@app.delete("/api/tenants/<tenant_id>/members/<user_id>")
-@require_auth
-def remove_tenant_member(tenant_id: str, user_id: str):
-    caller_id = session["user_id"]
-    with _db() as conn:
-        caller = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, caller_id),
-        ).fetchone()
-    if not caller or caller["role"] not in ("owner", "admin"):
-        return jsonify({"error": "forbidden"}), 403
-    if caller_id == user_id:
-        return jsonify({"error": "cannot remove yourself"}), 400
-
-    with _db() as conn:
-        conn.execute(
-            "DELETE FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, user_id),
-        )
-    _log_audit(caller_id, "tenant_member_removed", "tenant", tenant_id, {"user_id": user_id})
-    return jsonify({"ok": True})
-
-
-# ── Plugin install endpoints ──────────────────────────────────────────────────
-
-@app.get("/api/tenants/<tenant_id>/installs")
-@require_auth
-def list_installs(tenant_id: str):
-    user_id = session["user_id"]
-    with _db() as conn:
-        member = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, user_id),
-        ).fetchone()
-        if not member:
-            return jsonify({"error": "forbidden"}), 403
-        rows = conn.execute(
-            """
-            SELECT pi.plugin_id, pi.status, pi.installed_at, pi.installed_by,
-                   r.manifest_json, r.last_heartbeat
-            FROM plugin_installs pi
-            LEFT JOIN registry r ON r.id = pi.plugin_id
-            WHERE pi.tenant_id = ?
-            ORDER BY pi.installed_at
-            """,
-            (tenant_id,),
-        ).fetchall()
-
-    cutoff = time.time() - HEARTBEAT_TTL
-    result = []
-    for row in rows:
-        manifest = json.loads(row["manifest_json"]) if row["manifest_json"] else {}
-        result.append({
-            "plugin_id": row["plugin_id"],
-            "status": row["status"],
-            "installed_at": row["installed_at"],
-            "installed_by": row["installed_by"],
-            "alive": row["last_heartbeat"] is not None and row["last_heartbeat"] >= cutoff,
-            "manifest": manifest,
-        })
-    return jsonify(result)
-
-
-@app.post("/api/tenants/<tenant_id>/installs")
-@require_auth
-def install_plugin(tenant_id: str):
-    caller_id = session["user_id"]
-    with _db() as conn:
-        caller = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, caller_id),
-        ).fetchone()
-    if not caller or caller["role"] not in ("owner", "admin"):
-        return jsonify({"error": "forbidden"}), 403
-
-    body = request.get_json(force=True) or {}
-    plugin_id = (body.get("plugin_id") or "").strip()
-    if not plugin_id:
-        return jsonify({"error": "plugin_id is required"}), 400
-
-    with _db() as conn:
-        exists = conn.execute(
-            "SELECT id FROM registry WHERE id = ?", (plugin_id,)
-        ).fetchone()
-        if not exists:
-            return jsonify({"error": "plugin_not_found"}), 404
-        _install_plugin(conn, tenant_id, plugin_id, installed_by=caller_id)
-
-    _log_audit(caller_id, "plugin_installed", "plugin_install", plugin_id,
-               {"tenant_id": tenant_id})
-    return jsonify({"ok": True})
-
-
-@app.patch("/api/tenants/<tenant_id>/installs/<plugin_id>")
-@require_auth
-def update_install(tenant_id: str, plugin_id: str):
-    caller_id = session["user_id"]
-    with _db() as conn:
-        caller = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, caller_id),
-        ).fetchone()
-    if not caller or caller["role"] not in ("owner", "admin"):
-        return jsonify({"error": "forbidden"}), 403
-
-    body = request.get_json(force=True) or {}
-    new_status = body.get("status", "").strip()
-    if new_status not in ("active", "suspended", "trial"):
-        return jsonify({"error": "status must be active, suspended, or trial"}), 400
-
-    with _db() as conn:
-        result = conn.execute(
-            "UPDATE plugin_installs SET status = ? WHERE tenant_id = ? AND plugin_id = ?",
-            (new_status, tenant_id, plugin_id),
-        )
-    if result.rowcount == 0:
-        return jsonify({"error": "install_not_found"}), 404
-
-    _log_audit(caller_id, "plugin_install_updated", "plugin_install", plugin_id,
-               {"tenant_id": tenant_id, "status": new_status})
-    return jsonify({"ok": True})
-
-
-@app.delete("/api/tenants/<tenant_id>/installs/<plugin_id>")
-@require_auth
-def uninstall_plugin(tenant_id: str, plugin_id: str):
-    caller_id = session["user_id"]
-    with _db() as conn:
-        caller = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, caller_id),
-        ).fetchone()
-    if not caller or caller["role"] not in ("owner", "admin"):
-        return jsonify({"error": "forbidden"}), 403
-
-    with _db() as conn:
-        conn.execute(
-            "DELETE FROM plugin_installs WHERE tenant_id = ? AND plugin_id = ?",
-            (tenant_id, plugin_id),
-        )
-    _log_audit(caller_id, "plugin_uninstalled", "plugin_install", plugin_id,
-               {"tenant_id": tenant_id})
-    return jsonify({"ok": True})
-
-
-@app.get("/api/catalog")
-@require_auth
-def get_catalog():
-    """Return all known plugins with an `installed` flag for the caller's tenant."""
-    user_id = session["user_id"]
-    membership = _get_tenant_membership(user_id)
-    if not membership:
-        return jsonify([])
-    tenant_id = membership["id"]
-    with _db() as conn:
-        rows = conn.execute(
-            """
-            SELECT p.id, p.name, p.description, p.icon, p.visibility,
-                   pv.version, pv.manifest_json,
-                   pi.status AS install_status
-            FROM plugins p
-            JOIN plugin_versions pv ON pv.plugin_id = p.id AND pv.status = 'published'
-            LEFT JOIN plugin_installs pi ON pi.plugin_id = p.id AND pi.tenant_id = ?
-            ORDER BY p.name
-            """,
-            (tenant_id,),
-        ).fetchall()
-    result = []
-    for row in rows:
-        result.append({
-            "plugin_id": row["id"],
-            "name": row["name"],
-            "description": row["description"],
-            "icon": row["icon"],
-            "visibility": row["visibility"],
-            "version": row["version"],
-            "manifest": json.loads(row["manifest_json"]),
-            "installed": row["install_status"] is not None,
-            "install_status": row["install_status"],
-        })
-    return jsonify(result)
-
-
-# ── Profile & Preferences endpoints ──────────────────────────────────────────
-
-_VALID_THEMES   = {"dark", "light", "system"}
-_VALID_DIGESTS  = {"none", "daily", "weekly"}
-_VALID_SCALES   = {0.8, 1.0, 1.2, 1.5}
-
-
-def _get_preferences(user_id: str) -> dict:
-    with _db() as conn:
-        row = conn.execute(
-            "SELECT * FROM user_preferences WHERE user_id = ?", (user_id,)
-        ).fetchone()
-    if not row:
-        return {
-            "theme": "dark", "language": "es", "timezone": "UTC",
-            "reduced_motion": False, "font_scale": 1.0,
-            "notification_email": True, "notification_digest": "weekly",
-        }
-    return {
-        "theme": row["theme"], "language": row["language"],
-        "timezone": row["timezone"],
-        "reduced_motion": bool(row["reduced_motion"]),
-        "font_scale": row["font_scale"],
-        "notification_email": bool(row["notification_email"]),
-        "notification_digest": row["notification_digest"],
-    }
-
-
-def _get_profile(user_id: str) -> dict:
-    with _db() as conn:
-        row = conn.execute(
-            "SELECT * FROM user_profiles WHERE user_id = ?", (user_id,)
-        ).fetchone()
-    if not row:
-        return {"avatar_url": None, "bio": None, "display_name": None,
-                "show_activity": True, "show_email": False}
-    return {
-        "avatar_url": row["avatar_url"],
-        "bio": row["bio"],
-        "display_name": row["display_name"],
-        "show_activity": bool(row["show_activity"]),
-        "show_email": bool(row["show_email"]),
-    }
-
-
-@app.get("/auth/me/preferences")
-@require_auth
-def get_preferences():
-    return jsonify(_get_preferences(session["user_id"]))
-
-
-@app.patch("/auth/me/preferences")
-@require_auth
-def update_preferences():
-    user_id = session["user_id"]
-    body = request.get_json(force=True) or {}
-    errors = {}
-
-    theme = body.get("theme")
-    if theme is not None and theme not in _VALID_THEMES:
-        errors["theme"] = f"must be one of: {', '.join(sorted(_VALID_THEMES))}"
-
-    digest = body.get("notification_digest")
-    if digest is not None and digest not in _VALID_DIGESTS:
-        errors["notification_digest"] = f"must be one of: {', '.join(sorted(_VALID_DIGESTS))}"
-
-    font_scale = body.get("font_scale")
-    if font_scale is not None and font_scale not in _VALID_SCALES:
-        errors["font_scale"] = f"must be one of: {sorted(_VALID_SCALES)}"
-
-    if errors:
-        return jsonify({"error": "invalid_fields", "fieldErrors": errors}), 400
-
-    current = _get_preferences(user_id)
-    merged = {**current, **{k: v for k, v in body.items() if k in current}}
-
-    with _db() as conn:
-        conn.execute(
-            """
-            INSERT INTO user_preferences
-              (user_id, theme, language, timezone, reduced_motion, font_scale,
-               notification_email, notification_digest)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-              theme = excluded.theme,
-              language = excluded.language,
-              timezone = excluded.timezone,
-              reduced_motion = excluded.reduced_motion,
-              font_scale = excluded.font_scale,
-              notification_email = excluded.notification_email,
-              notification_digest = excluded.notification_digest
-            """,
-            (user_id, merged["theme"], merged["language"], merged["timezone"],
-             1 if merged["reduced_motion"] else 0,
-             merged["font_scale"],
-             1 if merged["notification_email"] else 0,
-             merged["notification_digest"]),
-        )
-    return jsonify(_get_preferences(user_id))
-
-
-@app.get("/auth/me/profile")
-@require_auth
-def get_profile():
-    return jsonify(_get_profile(session["user_id"]))
-
-
-@app.patch("/auth/me/profile")
-@require_auth
-def update_profile():
-    user_id = session["user_id"]
-    body = request.get_json(force=True) or {}
-    allowed = {"avatar_url", "bio", "display_name", "show_activity", "show_email"}
-    current = _get_profile(user_id)
-    merged = {**current, **{k: v for k, v in body.items() if k in allowed}}
-
-    with _db() as conn:
-        conn.execute(
-            """
-            INSERT INTO user_profiles
-              (user_id, avatar_url, bio, display_name, show_activity, show_email)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-              avatar_url = excluded.avatar_url,
-              bio = excluded.bio,
-              display_name = excluded.display_name,
-              show_activity = excluded.show_activity,
-              show_email = excluded.show_email
-            """,
-            (user_id, merged["avatar_url"], merged["bio"], merged["display_name"],
-             1 if merged["show_activity"] else 0,
-             1 if merged["show_email"] else 0),
-        )
-    return jsonify(_get_profile(user_id))
-
-
-@app.get("/auth/me/tenant-preferences")
-@require_auth
-def get_tenant_preferences():
-    user_id = session["user_id"]
-    membership = _get_tenant_membership(user_id)
-    if not membership:
-        return jsonify({"default_home_app": None, "notify_app_ids": []})
-    tenant_id = membership["id"]
-    with _db() as conn:
-        row = conn.execute(
-            "SELECT * FROM user_tenant_preferences WHERE user_id = ? AND tenant_id = ?",
-            (user_id, tenant_id),
-        ).fetchone()
-    if not row:
-        return jsonify({"default_home_app": None, "notify_app_ids": []})
-    return jsonify({
-        "default_home_app": row["default_home_app"],
-        "notify_app_ids": json.loads(row["notify_app_ids"] or "[]"),
-    })
-
-
-@app.patch("/auth/me/tenant-preferences")
-@require_auth
-def update_tenant_preferences():
-    user_id = session["user_id"]
-    membership = _get_tenant_membership(user_id)
-    if not membership:
-        return jsonify({"error": "not_a_tenant_member"}), 403
-    tenant_id = membership["id"]
-    body = request.get_json(force=True) or {}
-
-    notify_ids = body.get("notify_app_ids")
-    if notify_ids is not None and not isinstance(notify_ids, list):
-        return jsonify({"error": "notify_app_ids must be an array"}), 400
-
-    with _db() as conn:
-        existing = conn.execute(
-            "SELECT * FROM user_tenant_preferences WHERE user_id = ? AND tenant_id = ?",
-            (user_id, tenant_id),
-        ).fetchone()
-        current_home = existing["default_home_app"] if existing else None
-        current_ids  = json.loads(existing["notify_app_ids"] or "[]") if existing else []
-
-        new_home = body.get("default_home_app", current_home)
-        new_ids  = notify_ids if notify_ids is not None else current_ids
-
-        conn.execute(
-            """
-            INSERT INTO user_tenant_preferences
-              (user_id, tenant_id, default_home_app, notify_app_ids)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id, tenant_id) DO UPDATE SET
-              default_home_app = excluded.default_home_app,
-              notify_app_ids   = excluded.notify_app_ids
-            """,
-            (user_id, tenant_id, new_home, json.dumps(new_ids)),
-        )
-    return jsonify({"default_home_app": new_home, "notify_app_ids": new_ids})
-
-
-# ── Tenant settings endpoints ─────────────────────────────────────────────────
-
-def _get_tenant_settings(tenant_id: str) -> dict:
-    with _db() as conn:
-        row = conn.execute("SELECT * FROM tenants WHERE id = ?", (tenant_id,)).fetchone()
-    if not row:
-        return {}
-    return {
-        "id": row["id"],
-        "name": row["name"],
-        "default_language": row["default_language"] if "default_language" in row.keys() else "es",
-        "member_default_role": row["member_default_role"] if "member_default_role" in row.keys() else "member",
-        "allowed_apps": json.loads(row["allowed_apps"]) if (row["allowed_apps"] if "allowed_apps" in row.keys() else None) else None,
-        "notification_defaults": json.loads(row["notification_defaults"] if "notification_defaults" in row.keys() else "{}") or {},
-    }
-
-
-@app.get("/api/tenants/<tenant_id>/settings")
-@require_auth
-def get_tenant_settings(tenant_id: str):
-    user_id = session["user_id"]
-    with _db() as conn:
-        member = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, user_id),
-        ).fetchone()
-    if not member:
-        return jsonify({"error": "forbidden"}), 403
-    return jsonify(_get_tenant_settings(tenant_id))
-
-
-@app.patch("/api/tenants/<tenant_id>/settings")
-@require_auth
-def update_tenant_settings(tenant_id: str):
-    user_id = session["user_id"]
-    with _db() as conn:
-        member = conn.execute(
-            "SELECT role FROM tenant_memberships WHERE tenant_id = ? AND user_id = ?",
-            (tenant_id, user_id),
-        ).fetchone()
-    if not member or member["role"] not in ("owner", "admin"):
-        return jsonify({"error": "forbidden"}), 403
-
-    body = request.get_json(force=True) or {}
-    allowed_roles = {"owner", "admin", "member", "viewer"}
-    errors = {}
-
-    member_default_role = body.get("member_default_role")
-    if member_default_role is not None and member_default_role not in allowed_roles:
-        errors["member_default_role"] = f"must be one of: {', '.join(sorted(allowed_roles))}"
-
-    allowed_apps = body.get("allowed_apps")
-    if allowed_apps is not None and not isinstance(allowed_apps, list):
-        errors["allowed_apps"] = "must be an array or null"
-
-    if errors:
-        return jsonify({"error": "invalid_fields", "fieldErrors": errors}), 400
-
-    now = time.time()
-    updates = {}
-    if "name" in body and _is_non_empty_string(body["name"]):
-        updates["name"] = body["name"]
-    if "default_language" in body:
-        updates["default_language"] = body["default_language"]
-    if member_default_role is not None:
-        updates["member_default_role"] = member_default_role
-    if "allowed_apps" in body:
-        updates["allowed_apps"] = json.dumps(allowed_apps) if allowed_apps is not None else None
-    if "notification_defaults" in body and isinstance(body["notification_defaults"], dict):
-        updates["notification_defaults"] = json.dumps(body["notification_defaults"])
-
-    if updates:
-        updates["updated_at"] = now
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        with _db() as conn:
-            conn.execute(
-                f"UPDATE tenants SET {set_clause} WHERE id = ?",
-                (*updates.values(), tenant_id),
-            )
-        _log_audit(user_id, "tenant_settings_updated", "tenant", tenant_id,
-                   {"fields": list(updates.keys())})
-
-    return jsonify(_get_tenant_settings(tenant_id))
 
 
 @app.get("/auth/login")
@@ -1480,18 +927,26 @@ def auth_me():
     return jsonify(user)
 
 
-if __name__ == "__main__":
+def _bootstrap():
     _ensure_db_exists()
     _init_db()
     _run_migrations()
     _init_default_tenant()
     _init_static_apps()
+    # Wire blueprints after DB is ready
+    _user_repo = SqlUserRepository(_db)
+    _tenant_repo = SqlTenantRepository(_db)
+    _plugin_repo = SqlPluginRepository(_db, heartbeat_ttl=HEARTBEAT_TTL)
+    _audit_repo = SqlAuditRepository(_db)
+    app.register_blueprint(create_profile_blueprint(_user_repo))
+    app.register_blueprint(create_tenant_settings_blueprint(_tenant_repo, _audit_repo))
+    app.register_blueprint(create_catalog_blueprint(_plugin_repo, _tenant_repo, _audit_repo))
+
+
+if __name__ == "__main__":
+    _bootstrap()
     app.run(host="0.0.0.0", port=5000)
 
 
-_ensure_db_exists()
-_init_db()
-_run_migrations()
-_init_default_tenant()
-_init_static_apps()
+_bootstrap()
 

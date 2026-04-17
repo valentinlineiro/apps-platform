@@ -291,5 +291,138 @@ class AuditEndpointTests(unittest.TestCase):
         self.assertIn("created_at", e)
 
 
+class FakeUserRepository:
+    """In-memory UserRepository for use-case tests — no HTTP, no database."""
+
+    def __init__(self, primary_tenant_id: str | None = "default"):
+        self._profiles: dict = {}
+        self._prefs: dict = {}
+        self._tenant_prefs: dict = {}
+        self._primary_tenant_id = primary_tenant_id
+
+    def get_profile(self, user_id):
+        from domain.user import UserProfile
+        return self._profiles.get(user_id, UserProfile())
+
+    def save_profile(self, user_id, profile):
+        self._profiles[user_id] = profile
+        return profile
+
+    def get_preferences(self, user_id):
+        from domain.user import Preferences
+        return self._prefs.get(user_id, Preferences())
+
+    def save_preferences(self, user_id, prefs):
+        self._prefs[user_id] = prefs
+        return prefs
+
+    def get_primary_tenant_id(self, user_id):
+        return self._primary_tenant_id
+
+    def get_tenant_preferences(self, user_id, tenant_id):
+        from domain.user import TenantPreferences
+        return self._tenant_prefs.get((user_id, tenant_id), TenantPreferences())
+
+    def save_tenant_preferences(self, user_id, tenant_id, prefs):
+        self._tenant_prefs[(user_id, tenant_id)] = prefs
+        return prefs
+
+
+class ProfileUseCaseTests(unittest.TestCase):
+    """Exercises use cases directly — no Flask, no HTTP, no database."""
+
+    def setUp(self):
+        self.repo = FakeUserRepository()
+
+    def test_get_profile_defaults(self):
+        from application.profile import get_profile
+        data = get_profile("u1", self.repo)
+        self.assertIsNone(data["avatar_url"])
+        self.assertIsNone(data["bio"])
+        self.assertTrue(data["show_activity"])
+        self.assertFalse(data["show_email"])
+
+    def test_update_profile_merges_fields(self):
+        from application.profile import get_profile, update_profile
+        update_profile("u1", {"display_name": "Ada", "bio": "Mathematician"}, self.repo)
+        data = get_profile("u1", self.repo)
+        self.assertEqual(data["display_name"], "Ada")
+        self.assertEqual(data["bio"], "Mathematician")
+
+    def test_update_profile_ignores_unknown_keys(self):
+        from application.profile import update_profile, get_profile
+        update_profile("u1", {"display_name": "X", "hack": "injected"}, self.repo)
+        self.assertNotIn("hack", get_profile("u1", self.repo))
+
+    def test_update_profile_partial_preserves_other_fields(self):
+        from application.profile import update_profile, get_profile
+        update_profile("u1", {"bio": "Initial"}, self.repo)
+        update_profile("u1", {"display_name": "New"}, self.repo)
+        data = get_profile("u1", self.repo)
+        self.assertEqual(data["bio"], "Initial")
+        self.assertEqual(data["display_name"], "New")
+
+    def test_preferences_defaults(self):
+        from application.profile import get_preferences
+        data = get_preferences("u1", self.repo)
+        self.assertEqual(data["theme"], "dark")
+        self.assertEqual(data["font_scale"], 1.0)
+        self.assertEqual(data["notification_digest"], "weekly")
+        self.assertTrue(data["notification_email"])
+
+    def test_update_preferences_merges(self):
+        from application.profile import update_preferences, get_preferences
+        update_preferences("u1", {"theme": "light", "language": "en"}, self.repo)
+        data = get_preferences("u1", self.repo)
+        self.assertEqual(data["theme"], "light")
+        self.assertEqual(data["language"], "en")
+        self.assertEqual(data["timezone"], "UTC")  # unchanged default
+
+    def test_validate_preferences_rejects_bad_theme(self):
+        from application.profile import validate_preferences
+        self.assertIn("theme", validate_preferences({"theme": "pink"}))
+
+    def test_validate_preferences_rejects_bad_digest(self):
+        from application.profile import validate_preferences
+        self.assertIn("notification_digest", validate_preferences({"notification_digest": "hourly"}))
+
+    def test_validate_preferences_rejects_bad_font_scale(self):
+        from application.profile import validate_preferences
+        self.assertIn("font_scale", validate_preferences({"font_scale": 99.9}))
+
+    def test_validate_preferences_accepts_valid_payload(self):
+        from application.profile import validate_preferences
+        errors = validate_preferences({"theme": "light", "font_scale": 1.2, "notification_digest": "daily"})
+        self.assertEqual(errors, {})
+
+    def test_tenant_preferences_defaults(self):
+        from application.profile import get_tenant_preferences
+        data = get_tenant_preferences("u1", self.repo)
+        self.assertIsNone(data["default_home_app"])
+        self.assertEqual(data["notify_app_ids"], [])
+
+    def test_tenant_preferences_returns_none_without_tenant(self):
+        from application.profile import get_tenant_preferences
+        repo = FakeUserRepository(primary_tenant_id=None)
+        self.assertIsNone(get_tenant_preferences("u1", repo))
+
+    def test_update_tenant_preferences_sets_home_app(self):
+        from application.profile import update_tenant_preferences
+        result, error = update_tenant_preferences("u1", {"default_home_app": "exam-corrector"}, self.repo)
+        self.assertIsNone(error)
+        self.assertEqual(result["default_home_app"], "exam-corrector")
+
+    def test_update_tenant_preferences_rejects_bad_notify_ids(self):
+        from application.profile import update_tenant_preferences
+        _, error = update_tenant_preferences("u1", {"notify_app_ids": "not-a-list"}, self.repo)
+        self.assertIsNotNone(error)
+
+    def test_update_tenant_preferences_no_tenant_returns_error(self):
+        from application.profile import update_tenant_preferences
+        repo = FakeUserRepository(primary_tenant_id=None)
+        _, error = update_tenant_preferences("u1", {}, repo)
+        self.assertEqual(error, "not_a_tenant_member")
+
+
 if __name__ == "__main__":
     unittest.main()
