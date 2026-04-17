@@ -47,6 +47,7 @@ nav:
     - Parent Repo Model: concepts/parent-repo.md
   - How-To Guides:
     - Coding Standards: how-to/coding-standards.md
+    - Workspace Management: how-to/workspace-management.md
   - Reference:
     - Environment Variables: reference/environment-variables.md
   - Applications:

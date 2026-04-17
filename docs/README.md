@@ -28,6 +28,7 @@ Start here whenever you need to find specific information about the platform's a
 
 ### 🛠 How-To Guides
 - [**Coding Standards**](how-to/coding-standards.md): Mandatory conventions for Angular and Python.
+- [**Workspace Management**](how-to/workspace-management.md): Running tasks and scaffolding with Nx.
 
 ### 📚 Reference
 - [**Environment Variables**](reference/environment-variables.md): Configuration and secrets registry.
