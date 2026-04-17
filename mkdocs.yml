@@ -1,0 +1,67 @@
+site_name: Apps Platform
+site_description: Developer documentation for the apps-platform monorepo
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - toc.follow
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: README.md
+  - Quickstart:
+    - Setup: quickstart/setup.md
+  - Concepts:
+    - Architecture: concepts/architecture.md
+    - Infrastructure: concepts/infrastructure.md
+    - Parent Repo Model: concepts/parent-repo.md
+  - How-To Guides:
+    - Coding Standards: how-to/coding-standards.md
+  - Reference:
+    - Environment Variables: reference/environment-variables.md
+  - Applications:
+    - Portal: apps/portal/index.md
+    - Exam Corrector: apps/exam-corrector/index.md
+  - Backlog:
+    - Overview: backlog/index.md
+    - Guidelines: backlog/GUIDELINES.md
+    - Items:
+      - Billing Marketplace: backlog/items/B-001 - Billing Marketplace.md
+      - User Profile Management: backlog/items/B-002 - User Profile Management.md
+      - Grocery List Optimizer: backlog/items/B-003 - Grocery List Optimizer Review.md
+    - Templates:
+      - AI Task Template: backlog/templates/AI_TASK_TEMPLATE.md
+  - AI Specific:
+    - Context Pack: ai/context-pack.md
+    - Glossary: ai/glossary.md
+    - Task Schema: ai/task-schema.md
