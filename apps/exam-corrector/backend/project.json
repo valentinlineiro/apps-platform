@@ -9,6 +9,12 @@
       "options": {
         "cwd": "apps/exam-corrector/backend"
       }
+    },
+    "test": {
+      "command": ".venv/bin/python -m pytest tests/",
+      "options": {
+        "cwd": "apps/exam-corrector/backend"
+      }
     }
   }
 }

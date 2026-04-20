@@ -3,7 +3,7 @@ import os
 import sqlite3
 import time
 
-from app.models.job import Job
+from domain.job import Job
 
 
 class JobStore:

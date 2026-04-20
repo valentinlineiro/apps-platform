@@ -1,0 +1,20 @@
+{
+  "name": "aneca-advisor-backend",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/aneca-advisor/backend",
+  "targets": {
+    "run": {
+      "command": "python app.py",
+      "options": {
+        "cwd": "apps/aneca-advisor/backend"
+      }
+    },
+    "test": {
+      "command": "python -m pytest tests/",
+      "options": {
+        "cwd": "apps/aneca-advisor/backend"
+      }
+    }
+  }
+}

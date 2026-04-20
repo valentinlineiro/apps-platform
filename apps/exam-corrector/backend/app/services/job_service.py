@@ -8,7 +8,7 @@ from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
 from app import config
-from app.models.job import Job
+from domain.job import Job
 from app.services.image_service import (
     load_and_crop, hash_image, corregir_con_omr, detectar_bboxes_cv,
 )
