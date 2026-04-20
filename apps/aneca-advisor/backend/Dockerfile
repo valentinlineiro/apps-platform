@@ -10,11 +10,10 @@ RUN npx ng build aneca-advisor-element
 # Stage 2: Python backend
 FROM python:3.11-slim
 WORKDIR /app
-COPY apps/aneca-advisor/backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 COPY libs/platform-python-sdk/ /libs/platform-python-sdk/
 COPY libs/backend-core/ /libs/backend-core/
-RUN pip install --no-cache-dir /libs/platform-python-sdk /libs/backend-core
+COPY apps/aneca-advisor/backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 COPY apps/aneca-advisor/backend/ .
 COPY --from=element-build /app/backend/static/element/ static/element/
 EXPOSE 5001

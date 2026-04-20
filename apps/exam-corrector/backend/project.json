@@ -4,14 +4,20 @@
   "projectType": "application",
   "sourceRoot": "apps/exam-corrector/backend",
   "targets": {
+    "setup": {
+      "command": "pip install -r requirements.txt",
+      "options": {
+        "cwd": "apps/exam-corrector/backend"
+      }
+    },
     "run": {
-      "command": "python wsgi.py",
+      "command": "python app.py",
       "options": {
         "cwd": "apps/exam-corrector/backend"
       }
     },
     "test": {
-      "command": ".venv/bin/python -m pytest tests/",
+      "command": "python -m pytest tests/",
       "options": {
         "cwd": "apps/exam-corrector/backend"
       }

@@ -4,6 +4,12 @@
   "projectType": "application",
   "sourceRoot": "apps/aneca-advisor/backend",
   "targets": {
+    "setup": {
+      "command": "pip install -r requirements.txt",
+      "options": {
+        "cwd": "apps/aneca-advisor/backend"
+      }
+    },
     "run": {
       "command": "python app.py",
       "options": {

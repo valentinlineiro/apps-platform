@@ -16,11 +16,10 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr-spa \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY apps/exam-corrector/backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 COPY libs/platform-python-sdk/ /libs/platform-python-sdk/
 COPY libs/backend-core/ /libs/backend-core/
-RUN pip install --no-cache-dir /libs/platform-python-sdk /libs/backend-core
+COPY apps/exam-corrector/backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 COPY apps/exam-corrector/backend/ .
 COPY --from=element-build /app/backend/static/element/ static/element/
 RUN mkdir -p uploads

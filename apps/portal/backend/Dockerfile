@@ -1,10 +1,9 @@
 FROM python:3.11-slim
 WORKDIR /app
-COPY apps/portal/backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 COPY libs/platform-python-sdk/ /libs/platform-python-sdk/
 COPY libs/backend-core/ /libs/backend-core/
-RUN pip install --no-cache-dir /libs/platform-python-sdk /libs/backend-core
+COPY apps/portal/backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 COPY apps/portal/backend/app.py .
 COPY apps/portal/backend/static_apps.json .
 COPY apps/portal/backend/postgres/ postgres/

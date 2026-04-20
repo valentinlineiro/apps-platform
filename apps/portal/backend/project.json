@@ -4,6 +4,12 @@
   "projectType": "application",
   "sourceRoot": "apps/portal/backend",
   "targets": {
+    "setup": {
+      "command": "pip install -r requirements.txt",
+      "options": {
+        "cwd": "apps/portal/backend"
+      }
+    },
     "run": {
       "command": "python app.py",
       "options": {
