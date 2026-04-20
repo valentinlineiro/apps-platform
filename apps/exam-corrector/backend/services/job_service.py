@@ -7,17 +7,17 @@ from typing import Optional
 
 from concurrent.futures import ThreadPoolExecutor
 
-from app import config
+import config
 from domain.job import Job
-from app.services.image_service import (
+from services.image_service import (
     load_and_crop, hash_image, corregir_con_omr, detectar_bboxes_cv,
 )
-from app.services.scoring_service import (
+from services.scoring_service import (
     cargar_reglas_evaluacion, aplicar_reglas_puntuacion,
     normalizar_tipo_examen, reglas_por_defecto,
 )
-from app.services.job_store import JobStore
-from app.services import template_service
+from services.job_store import JobStore
+from services import template_service
 
 _log = logging.getLogger(__name__)
 _store: Optional[JobStore] = None

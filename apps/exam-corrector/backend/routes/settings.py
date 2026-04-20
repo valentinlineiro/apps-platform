@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify
 
-from app.services import settings_service
+from services import settings_service
 
 bp = Blueprint("settings", __name__)
 

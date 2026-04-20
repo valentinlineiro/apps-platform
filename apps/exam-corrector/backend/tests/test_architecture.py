@@ -63,7 +63,7 @@ STRICT_RULES: list[tuple[str, list[str]]] = [
     ("domain",      ["app", "ports", "application", "adapters"]),
     ("ports",       ["app", "application", "adapters"]),
     ("application", ["app", "adapters"]),
-    ("adapters",    ["app.services", "app.routes"]),
+    ("adapters",    ["services", "routes"]),
 ]
 
 
@@ -86,7 +86,7 @@ _KNOWN_ROUTE_SERVICE_VIOLATIONS = 6
 
 
 def test_legacy_route_service_coupling_does_not_grow() -> None:
-    violations = _violations("app/routes", ["app.services"])
+    violations = _violations("routes", ["services"])
     count = len(violations)
     assert count <= _KNOWN_ROUTE_SERVICE_VIOLATIONS, (
         f"Route→service coupling grew: {count} violations (cap: {_KNOWN_ROUTE_SERVICE_VIOLATIONS}).\n"

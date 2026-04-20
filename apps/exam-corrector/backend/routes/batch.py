@@ -3,8 +3,8 @@ import uuid
 
 from flask import Blueprint, jsonify, request, Response, current_app
 
-from app import config
-from app.services import batch_service, template_service
+import config
+from services import batch_service, template_service
 from platform_sdk.observability import log_exception
 
 bp = Blueprint("batch", __name__)

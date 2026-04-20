@@ -4,7 +4,7 @@ import threading
 import time
 import uuid
 
-from app import config
+import config
 
 TEMPLATE_CACHE: dict = {}
 TEMPLATE_CACHE_LOCK = threading.Lock()

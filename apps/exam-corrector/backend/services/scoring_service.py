@@ -1,7 +1,7 @@
 import json
 import os
 
-from app import config
+import config
 
 
 def reglas_por_defecto() -> dict:

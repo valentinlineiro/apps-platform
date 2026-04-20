@@ -2,7 +2,7 @@ import json
 import os
 import threading
 
-from app import config
+import config
 
 _SETTINGS_PATH = os.path.join(config.UPLOAD_FOLDER, "settings.json")
 _lock = threading.Lock()

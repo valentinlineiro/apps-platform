@@ -1,4 +1,3 @@
-import functools
 import os
 import json
 import secrets
@@ -12,6 +11,7 @@ import requests as http_requests
 from flask import Flask, jsonify, redirect, request, session
 from flask_cors import CORS
 from platform_sdk.observability import setup_logging
+from backend_core import register_error_handlers, require_session
 from adapters.sql.audit_repo import SqlAuditRepository
 from adapters.sql.plugin_repo import SqlPluginRepository
 from adapters.sql.tenant_repo import SqlTenantRepository
@@ -28,6 +28,7 @@ except ImportError:
 
 app = Flask(__name__)
 setup_logging(app)
+register_error_handlers(app)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.secret_key = os.environ.get("PORTAL_SESSION_SECRET", "dev-portal-secret-change-me")
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -637,14 +638,6 @@ def _get_current_user() -> dict | None:
     }
 
 
-def require_auth(view):
-    @functools.wraps(view)
-    def wrapper(*args, **kwargs):
-        if not session.get("user_id"):
-            return jsonify({"error": "unauthorized"}), 401
-        return view(*args, **kwargs)
-
-    return wrapper
 
 
 def _validate_manifest(data: object) -> tuple[dict, dict[str, str], int | None]:
@@ -718,7 +711,7 @@ def _validate_manifest(data: object) -> tuple[dict, dict[str, str], int | None]:
 
 
 @app.get("/api/registry")
-@require_auth
+@require_session
 def get_registry():
     membership = _get_tenant_membership(session["user_id"])
     if not membership:
@@ -927,7 +920,7 @@ def auth_logout():
 
 
 @app.get("/auth/me")
-@require_auth
+@require_session
 def auth_me():
     user = _get_current_user()
     if user is None:

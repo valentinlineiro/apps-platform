@@ -2,7 +2,7 @@ import json
 
 from flask import Blueprint, render_template, request
 
-from app.services.scoring_service import (
+from services.scoring_service import (
     cargar_reglas_evaluacion, guardar_reglas_evaluacion, validar_reglas_evaluacion,
 )
 

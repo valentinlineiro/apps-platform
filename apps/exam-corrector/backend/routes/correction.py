@@ -4,8 +4,8 @@ import uuid
 from flask import Blueprint, jsonify, render_template, request
 from werkzeug.utils import secure_filename
 
-from app import config
-from app.services import job_service, template_service
+import config
+from services import job_service, template_service
 
 bp = Blueprint("correction", __name__)
 

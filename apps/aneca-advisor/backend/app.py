@@ -6,6 +6,7 @@ from flask import Flask
 from flask_cors import CORS
 from platform_sdk.observability import setup_logging
 from platform_sdk import start_registration
+from backend_core import register_error_handlers
 
 from adapters.routes.aneca import create_aneca_blueprint
 from adapters.sql.article_repo import SqlArticleRepository
@@ -19,6 +20,7 @@ except ImportError:
 
 app = Flask(__name__, static_folder="static", static_url_path="/apps/aneca-advisor")
 setup_logging(app)
+register_error_handlers(app)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 app.secret_key = os.environ.get("PORTAL_SESSION_SECRET", "dev-portal-secret-change-me")
 app.config["SESSION_COOKIE_HTTPONLY"] = True

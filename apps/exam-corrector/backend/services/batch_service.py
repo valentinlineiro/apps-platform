@@ -10,8 +10,8 @@ import time
 import uuid
 import zipfile
 
-from app import config
-from app.services import job_service
+import config
+from services import job_service
 
 _log = logging.getLogger(__name__)
 
@@ -125,8 +125,8 @@ def _prewarm_template(ruta_plantilla: str, ready: threading.Event) -> None:
     start, so every chunk gets an immediate cache hit.  Runs as a daemon thread;
     sets *ready* when done (or on failure)."""
     try:
-        from app.services import job_service
-        from app.services.image_service import load_and_crop, hash_image
+        from services import job_service
+        from services.image_service import load_and_crop, hash_image
 
         _log.info("batch prewarm: loading template image")
         img = load_and_crop(ruta_plantilla)

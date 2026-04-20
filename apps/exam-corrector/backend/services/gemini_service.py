@@ -4,9 +4,9 @@ import time
 
 import requests
 
-from app import config
-from app.services.image_service import encode_for_gemini
-from app.services import template_service
+import config
+from services.image_service import encode_for_gemini
+from services import template_service
 
 BATCH_SIZE = 10
 
@@ -208,7 +208,7 @@ _RETRY_DELAYS = (5, 15, 30)  # seconds to wait after 1st, 2nd, 3rd 429
 
 
 def llamar_gemini(parts: list, prompt: str, timeout: int = 90) -> dict:
-    from app.services import settings_service
+    from services import settings_service
     api_key = settings_service.get_gemini_api_key()
     if not api_key:
         raise ValueError("Falta GEMINI_API_KEY. Configúrala en Ajustes o como variable de entorno.")

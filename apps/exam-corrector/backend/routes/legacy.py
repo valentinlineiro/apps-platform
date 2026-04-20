@@ -4,8 +4,8 @@ import uuid
 from flask import Blueprint, redirect, render_template, request
 from werkzeug.utils import secure_filename
 
-from app import config
-from app.services import job_service, template_service
+import config
+from services import job_service, template_service
 
 bp = Blueprint("legacy", __name__)
 
