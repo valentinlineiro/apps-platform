@@ -10,6 +10,18 @@ def get_profile(user_id: str, repo: UserRepository) -> dict:
     return asdict(repo.get_profile(user_id))
 
 
+_PROFILE_BOOL_FIELDS = {"show_activity", "show_email"}
+
+
+def validate_profile(body: dict) -> dict:
+    """Return fieldErrors dict; empty dict means valid."""
+    errors: dict = {}
+    for field in _PROFILE_BOOL_FIELDS:
+        if field in body and not isinstance(body[field], bool):
+            errors[field] = "must be a boolean"
+    return errors
+
+
 def update_profile(user_id: str, body: dict, repo: UserRepository) -> dict:
     allowed = {"avatar_url", "bio", "display_name", "show_activity", "show_email"}
     current = asdict(repo.get_profile(user_id))

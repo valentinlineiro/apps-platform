@@ -5,10 +5,6 @@ services:
     build:
       context: .
       dockerfile: apps/portal/Dockerfile
-    labels:
-      caddy: localhost, apps.localhost
-      caddy.handle: "/*"
-      caddy.handle.reverse_proxy: "{{upstreams 80}}"
     depends_on:
       - portal-backend
       - exam-corrector-backend
@@ -18,12 +14,6 @@ services:
 
   portal-backend:
     build: ./apps/portal/backend
-    labels:
-      caddy: localhost, apps.localhost
-      caddy.handle_0: /api/*
-      caddy.handle_0.reverse_proxy: "{{upstreams 5000}}"
-      caddy.handle_1: /auth/*
-      caddy.handle_1.reverse_proxy: "{{upstreams 5000}}"
     volumes:
       - ./libs:/libs
     command: >
@@ -87,18 +77,6 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  # attendance-checker-backend:   # uncomment when backend is added
-  #   build:
-  #     context: .
-  #     dockerfile: apps/attendance-checker/backend/Dockerfile
-  #   expose:
-  #     - "8000"
-  #   environment:
-  #     - PORTAL_BACKEND_URL=http://portal-backend:5000
-  #   depends_on:
-  #     - portal-backend
-  #   restart: unless-stopped
-
   postgres:
     image: postgres:16-alpine
     environment:
@@ -119,10 +97,6 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.2.2
     command: ["start-dev", "--import-realm"]
-    labels:
-      caddy: localhost, apps.localhost
-      caddy.handle: /realms* /resources* /admin* /js* /welcome* /robots.txt
-      caddy.handle.reverse_proxy: "{{upstreams 8080}}"
     environment:
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}

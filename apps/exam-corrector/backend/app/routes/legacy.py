@@ -2,6 +2,7 @@ import os
 import uuid
 
 from flask import Blueprint, redirect, render_template, request
+from werkzeug.utils import secure_filename
 
 from app import config
 from app.services import job_service, template_service
@@ -47,12 +48,14 @@ def corregir():
                 "resultado.html",
                 **job_service._resultado_error("Debes subir una plantilla o seleccionar una guardada."),
             )
-        ruta_plantilla = os.path.join(config.UPLOAD_FOLDER, f"sync_{uuid.uuid4()}_{plantilla_file.filename}")
+        safe_name = secure_filename(plantilla_file.filename) or "plantilla"
+        ruta_plantilla = os.path.join(config.UPLOAD_FOLDER, f"sync_{uuid.uuid4()}_{safe_name}")
         plantilla_file.save(ruta_plantilla)
         if save_template:
             template_service.registrar_template_guardada(ruta_plantilla, template_name=template_name)
 
-    ruta_examen = os.path.join(config.UPLOAD_FOLDER, f"sync_{uuid.uuid4()}_{examen_file.filename}")
+    safe_examen = secure_filename(examen_file.filename) or "examen"
+    ruta_examen = os.path.join(config.UPLOAD_FOLDER, f"sync_{uuid.uuid4()}_{safe_examen}")
     examen_file.save(ruta_examen)
 
     resultado = job_service.procesar_correccion(ruta_plantilla, ruta_examen)

@@ -2,6 +2,7 @@ import os
 import uuid
 
 from flask import Blueprint, jsonify, render_template, request
+from werkzeug.utils import secure_filename
 
 from app import config
 from app.services import job_service, template_service
@@ -31,13 +32,15 @@ def start_async():
     else:
         if not plantilla_file:
             return jsonify({"ok": False, "error": "Debes subir una plantilla o seleccionar una guardada."}), 400
-        ruta_plantilla = os.path.join(config.UPLOAD_FOLDER, f"{job_id}_plantilla_{plantilla_file.filename}")
+        safe_name = secure_filename(plantilla_file.filename) or "plantilla"
+        ruta_plantilla = os.path.join(config.UPLOAD_FOLDER, f"{job_id}_plantilla_{safe_name}")
         plantilla_file.save(ruta_plantilla)
         if save_template:
             saved = template_service.registrar_template_guardada(ruta_plantilla, template_name=template_name)
             template_id = saved["id"]
 
-    ruta_examen = os.path.join(config.UPLOAD_FOLDER, f"{job_id}_examen_{examen_file.filename}")
+    safe_examen = secure_filename(examen_file.filename) or "examen"
+    ruta_examen = os.path.join(config.UPLOAD_FOLDER, f"{job_id}_examen_{safe_examen}")
     examen_file.save(ruta_examen)
 
     job_service.submit_job(job_id, ruta_plantilla, ruta_examen, template_id=template_id)

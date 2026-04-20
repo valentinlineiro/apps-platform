@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, session
 from application.profile import (
     get_profile,
+    validate_profile,
     update_profile,
     get_preferences,
     validate_preferences,
@@ -26,6 +27,9 @@ def create_profile_blueprint(user_repo):
     @bp.patch("/auth/me/profile")
     def _update_profile():
         body = request.get_json(force=True) or {}
+        errors = validate_profile(body)
+        if errors:
+            return jsonify({"error": "invalid_fields", "fieldErrors": errors}), 400
         return jsonify(update_profile(session["user_id"], body, user_repo))
 
     @bp.get("/auth/me/preferences")

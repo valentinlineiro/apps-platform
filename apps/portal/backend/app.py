@@ -837,19 +837,23 @@ def auth_callback():
     if not code:
         return jsonify({"error": "missing_code"}), 400
 
-    token_response = http_requests.post(
-        OAUTH_TOKEN_URL,
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": _oauth_redirect_uri(),
-            "client_id": OAUTH_CLIENT_ID,
-            "client_secret": OAUTH_CLIENT_SECRET,
-            "code_verifier": code_verifier,
-        },
-        timeout=10,
-        verify=OAUTH_VERIFY_SSL,
-    )
+    try:
+        token_response = http_requests.post(
+            OAUTH_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": _oauth_redirect_uri(),
+                "client_id": OAUTH_CLIENT_ID,
+                "client_secret": OAUTH_CLIENT_SECRET,
+                "code_verifier": code_verifier,
+            },
+            timeout=10,
+            verify=OAUTH_VERIFY_SSL,
+        )
+    except http_requests.exceptions.RequestException as exc:
+        app.logger.error(f"token exchange network error: {exc}")
+        return jsonify({"error": "idp_unreachable"}), 502
     if not token_response.ok:
         app.logger.error(f"token exchange failed: {token_response.status_code} {token_response.text[:200]}")
         return jsonify({"error": "token_exchange_failed"}), 502
@@ -860,12 +864,16 @@ def auth_callback():
         app.logger.error("token response missing access_token")
         return jsonify({"error": "missing_access_token"}), 502
 
-    userinfo_response = http_requests.get(
-        OAUTH_USERINFO_URL,
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=10,
-        verify=OAUTH_VERIFY_SSL,
-    )
+    try:
+        userinfo_response = http_requests.get(
+            OAUTH_USERINFO_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10,
+            verify=OAUTH_VERIFY_SSL,
+        )
+    except http_requests.exceptions.RequestException as exc:
+        app.logger.error(f"userinfo network error: {exc}")
+        return jsonify({"error": "idp_unreachable"}), 502
     if not userinfo_response.ok:
         app.logger.error(f"userinfo fetch failed: {userinfo_response.status_code}")
         return jsonify({"error": "userinfo_fetch_failed"}), 502
