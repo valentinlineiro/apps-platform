@@ -51,18 +51,12 @@ services:
 
   exam-corrector-backend:
     build:
-      context: apps/exam-corrector
+      context: ./apps/exam-corrector
       dockerfile: backend/Dockerfile
-    labels:
-      caddy: localhost, apps.localhost
-      caddy.handle_0: /exam-corrector/*
-      caddy.handle_0.reverse_proxy: "{{upstreams 8000}}"
-      caddy.handle_1: /apps/exam-corrector/*
-      caddy.handle_1.reverse_proxy: "{{upstreams 8000}}"
     expose:
       - "8000"
     command: >
-      bash -c "cd /libs/platform-python-sdk && python setup.py develop && cd /app && gunicorn wsgi:app --bind 0.0.0.0:8000 --workers 2 --timeout 120"
+      bash -c "cd /libs/platform-python-sdk && python setup.py develop && cd /app && gunicorn wsgi:app --bind 0.0.0.0:8000 --workers 2 --timeout 300"
     environment:
       - ALLOWED_ORIGINS=http://localhost:4200
       - PORTAL_BACKEND_URL=http://portal-backend:5000
@@ -74,24 +68,23 @@ services:
     restart: unless-stopped
 
   aneca-advisor-backend:
-    build: ./apps/aneca-advisor/backend
+    build:
+      context: ./apps/aneca-advisor
+      dockerfile: backend/Dockerfile
     expose:
       - "5001"
-    volumes:
-      - ./libs:/libs
-      - ./apps/aneca-advisor/backend/static:/app/static
     command: >
       bash -c "cd /libs/platform-python-sdk && python setup.py develop && cd /app && gunicorn app:app --bind 0.0.0.0:5001 --workers 2 --timeout 120"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
+      - PORTAL_BACKEND_URL=http://portal-backend:5000
+    volumes:
+      - ./libs:/libs
     depends_on:
       postgres:
         condition: service_healthy
       portal-backend:
         condition: service_started
-    environment:
-      - PORTAL_SESSION_SECRET=${PORTAL_SESSION_SECRET:-dev-portal-session-secret}
-      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
-      - PORTAL_BACKEND_URL=http://portal-backend:5000
     restart: unless-stopped
 
   # attendance-checker-backend:   # uncomment when backend is added

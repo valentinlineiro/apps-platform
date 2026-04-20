@@ -1,13 +1,18 @@
+# Stage 1: Build the Angular web component bundle
+FROM node:20-alpine AS element-build
+WORKDIR /app
+COPY package.json ./
+RUN npm install
+COPY angular.json tsconfig.json ./
+COPY frontend/ frontend/
+RUN npx ng build aneca-advisor-element
+
+# Stage 2: Python backend
 FROM python:3.11-slim
 WORKDIR /app
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY app.py .
-COPY static/ static/
-COPY domain/ domain/
-COPY application/ application/
-COPY ports/ ports/
-COPY adapters/ adapters/
-COPY infrastructure/ infrastructure/
+COPY backend/ .
+COPY --from=element-build /app/backend/static/element/ static/element/
 EXPOSE 5001
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5001", "--workers", "2", "--timeout", "120"]

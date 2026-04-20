@@ -31,6 +31,8 @@ export class MicroFrontendLoaderComponent implements AfterViewInit {
     try {
       await this.loadScript(this.scriptUrl());
       if (this.destroyed) return;
+      await customElements.whenDefined(this.elementTag());
+      if (this.destroyed) return;
       const el = document.createElement(this.elementTag());
       this.hostRef.nativeElement.appendChild(el);
     } catch {
@@ -43,6 +45,7 @@ export class MicroFrontendLoaderComponent implements AfterViewInit {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
       const script = document.createElement('script');
+      script.type = 'module';
       script.src = src;
       script.onload = () => resolve();
       script.onerror = () => reject(new Error(`Cannot load ${src}`));
