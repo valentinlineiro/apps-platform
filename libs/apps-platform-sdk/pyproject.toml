@@ -3,9 +3,13 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "platform-sdk"
+name = "apps-platform-sdk"
 version = "0.1.0"
 dependencies = [
     "requests>=2.31.0",
     "flask>=3.0"
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["apps_platform_sdk*"]

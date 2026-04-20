@@ -25,6 +25,7 @@ _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 _PDF_DPI = 150
 _CHUNK_SIZE = 10   # exams per chunk
 _MAX_PARALLEL = 1  # concurrent chunk threads
+_SQLITE_TIMEOUT_SECONDS = 30
 
 
 def _get_semaphore() -> threading.Semaphore:
@@ -37,9 +38,19 @@ def _get_semaphore() -> threading.Semaphore:
 
 
 def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(config.JOBS_DB_PATH, check_same_thread=False)
+    conn = sqlite3.connect(
+        config.JOBS_DB_PATH,
+        check_same_thread=False,
+        timeout=_SQLITE_TIMEOUT_SECONDS,
+    )
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(f"PRAGMA busy_timeout={_SQLITE_TIMEOUT_SECONDS * 1000}")
+    try:
+        # Multiple gunicorn workers may open the DB concurrently on boot.
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError as exc:
+        if "database is locked" not in str(exc).lower():
+            raise
     return conn
 
 

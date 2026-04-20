@@ -52,8 +52,8 @@ apps/
   attendance-checker/
     frontend/                 # Angular 21 web component (backend WIP)
 libs/
-  platform-python-sdk/        # Shared Python SDK used by all backends
-    platform_sdk/
+  apps-platform-sdk/          # Shared Python SDK used by all backends
+    apps_platform_sdk/
       observability.py        # JSON structured logging
       registration.py         # Heartbeat registration logic
 ```
@@ -63,10 +63,10 @@ libs/
 - **`apps/exam-corrector/`**: OMR (Optical Mark Recognition) pipeline using OpenCV.
 - **`apps/aneca-advisor/`**: ANECA academic accreditation eligibility simulator.
 - **`apps/attendance-checker/`**: Attendance tracking (frontend only, backend WIP).
-- **`libs/platform-python-sdk/`**: Shared logic for registration and observability.
+- **`libs/apps-platform-sdk/`**: Shared logic for registration, observability, auth, and errors.
 
 ### Adding a New App
-1. Create `apps/<name>/backend/` with a Flask app that calls `platform_sdk.start_registration(manifest)`.
+1. Create `apps/<name>/backend/` with a Flask app that calls `apps_platform_sdk.start_registration(manifest)`.
 2. Create `apps/<name>/frontend/` with an Angular app that bootstraps via `createApplication()` and calls `customElements.define()`.
 3. Add a multi-stage Dockerfile: Stage 1 builds the Angular bundle; Stage 2 is the Python backend.
 4. Add the service to `docker-compose.yml` (build context = `./apps/<name>`, no static volume mounts).

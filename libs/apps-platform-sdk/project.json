@@ -1,13 +1,13 @@
 {
-  "name": "platform-python-sdk",
+  "name": "apps-platform-sdk",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "library",
-  "sourceRoot": "libs/platform-python-sdk",
+  "sourceRoot": "libs/apps-platform-sdk",
   "targets": {
     "test": {
       "command": "python -m pytest",
       "options": {
-        "cwd": "libs/platform-python-sdk"
+        "cwd": "libs/apps-platform-sdk"
       }
     }
   }

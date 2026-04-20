@@ -32,12 +32,12 @@ All components use **separate files** for templates and styles. Never use inline
 - **Micro-frontends**: Each app is bundled as an Angular Element.
 
 ### Python Backend (Flask 3)
-All backends must use the `platform-python-sdk` for shared logic.
+All backends must use the `apps-platform-sdk` for shared logic.
 
 #### 1. Registration & Heartbeat
 Apps self-register at startup via `start_registration(manifest)`.
 ```python
-from platform_sdk import start_registration
+from apps_platform_sdk import start_registration
 
 manifest = { ... }
 start_registration(manifest)
@@ -46,7 +46,7 @@ start_registration(manifest)
 #### 2. Observability & Logging
 Backends must use structured JSON logging.
 ```python
-from platform_sdk.observability import setup_logging, log_exception
+from apps_platform_sdk.observability import setup_logging, log_exception
 
 setup_logging(app)
 log_exception("Something went wrong")

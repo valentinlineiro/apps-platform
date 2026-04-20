@@ -2,9 +2,9 @@ import os
 
 from flask import Flask
 from flask_cors import CORS
-from platform_sdk.observability import setup_logging
-from platform_sdk import start_registration
-from platform_sdk import register_error_handlers
+from apps_platform_sdk.observability import setup_logging
+from apps_platform_sdk import start_registration
+from apps_platform_sdk import register_error_handlers
 
 import config
 from services import template_service, job_service

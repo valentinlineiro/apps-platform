@@ -5,6 +5,8 @@ import time
 
 from domain.job import Job
 
+_SQLITE_TIMEOUT_SECONDS = 30
+
 
 class JobStore:
     def __init__(self, db_path: str):
@@ -12,9 +14,20 @@ class JobStore:
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        conn = sqlite3.connect(
+            self.db_path,
+            check_same_thread=False,
+            timeout=_SQLITE_TIMEOUT_SECONDS,
+        )
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(f"PRAGMA busy_timeout={_SQLITE_TIMEOUT_SECONDS * 1000}")
+        try:
+            # WAL mode is persistent per database file. During multi-worker boot,
+            # another worker may be switching modes at the same time.
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError as exc:
+            if "database is locked" not in str(exc).lower():
+                raise
         return conn
 
     def _init_db(self) -> None:

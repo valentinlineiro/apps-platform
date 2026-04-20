@@ -25,7 +25,7 @@ AI agents should read this file first whenever they are initialized in this work
 
 ### Hard Constraints
 1. **Frontend**: Standalone components ONLY. Separate HTML/CSS files ONLY.
-2. **Backend**: Must use `platform-python-sdk` for logging and registration.
+2. **Backend**: Must use `apps-platform-sdk` for shared backend primitives.
 3. **Database**: SQLite locally, PostgreSQL in Docker.
 4. **Auth**: Keycloak OIDC with PKCE. Gated by Nginx `auth_request`.
 

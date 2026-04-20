@@ -49,7 +49,7 @@ Prefer running tasks through Nx rather than underlying tools:
 ```bash
 # Build/Test specific projects
 npx nx build portal
-npx nx test platform-python-sdk
+npx nx test apps-platform-sdk
 
 # Run many
 npx nx run-many -t build

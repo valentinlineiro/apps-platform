@@ -3,4 +3,4 @@ flask-cors
 gunicorn
 requests
 psycopg2-binary
--e ../../../libs/platform-python-sdk
+-e ../../../libs/apps-platform-sdk

@@ -32,7 +32,7 @@ Save new files as `Category-Number - Title.md` (e.g., `B-004 - New Feature.md`).
 *Identify the areas of the codebase that will be affected.*
 - **Frontend Components**: `apps/portal/src/app/...`
 - **Backend Endpoints**: `apps/portal/backend/app.py`
-- **Shared Libs**: `libs/platform-python-sdk/...`
+- **Shared Libs**: `libs/apps-platform-sdk/...`
 
 ---
 
@@ -48,7 +48,7 @@ Save new files as `Category-Number - Title.md` (e.g., `B-004 - New Feature.md`).
 ### 🛠 Technical Constraints & References
 *Explicitly state requirements that the AI might miss.*
 - **Angular Standards**: Use separate `.html` and `.css` files.
-- **Python Standards**: Use `platform_sdk.observability` for all logging.
+- **Python Standards**: Use `apps_platform_sdk.observability` for all logging.
 - **Auth**: Define required roles (e.g., `admin`).
 - **Reference Docs**: Link to relevant `concepts/` or `how-to/` files.
 

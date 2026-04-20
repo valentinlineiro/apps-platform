@@ -6,4 +6,4 @@ pytesseract==0.3.13
 requests==2.32.3
 flask-cors==5.0.1
 pymupdf==1.25.3
--e ../../../libs/platform-python-sdk
+-e ../../../libs/apps-platform-sdk
