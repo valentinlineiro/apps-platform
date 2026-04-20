@@ -1,0 +1,69 @@
+---
+id: DOC-T-002
+title: Platform Stabilization and Technical Debt
+audience: [human, ai]
+last_updated: 2026-04-20
+tags: [technical-debt, stabilization, infrastructure, dx]
+source_of_truth: true
+related: [DOC-CON-001, DOC-HT-001]
+---
+
+# T-002 - Platform Stabilization and Technical Debt
+
+## Purpose
+Address critical documentation gaps, architectural brittle points, and missing testing infrastructure identified during the platform audit to ensure high reliability and smooth developer onboarding.
+
+## When to use
+This task should be prioritized to stabilize the development environment and establish a foundation for CI/CD and long-term maintainability.
+
+## Content
+
+---
+
+### 🏗 Context & Motivation
+The platform is architecturally sound but suffers from significant onboarding friction and deployment fragility:
+1. **Outdated README**: The root `README.md` still refers to git submodules and provides incorrect ports, leading to confusion for new developers.
+2. **Brittle Dependencies**: The use of `-e` relative path installations in `requirements.txt` for the `apps-platform-sdk` is effective for local development but prone to failure in production Docker builds.
+3. **Frontend Testing Gap**: No automated testing infrastructure is configured for the Angular 21 applications.
+4. **CI/CD Visibility**: There is currently no unified pipeline to validate changes across the monorepo using Nx's `affected` capabilities.
+
+---
+
+### 🗺 Scope & Impact
+- **Root Documentation**: `README.md`
+- **Backend Infrastructure**: `apps/*/backend/requirements.txt` and `Dockerfile`
+- **Frontend Infrastructure**: `apps/*/frontend/...` (Angular workspace)
+- **CI/CD**: `.github/workflows/`
+
+---
+
+### ✅ Acceptance Criteria
+- [ ] Rewrite root `README.md` to accurately document the Nx monorepo structure, current ports, and `nx run <project>:setup` startup commands.
+- [ ] Replace `-e` relative path installations in `requirements.txt` with a robust Docker build strategy (e.g., copying the SDK as a library) to ensure reproducible production builds.
+- [ ] Configure `Jest` or `Karma` for automated unit and integration testing of the Angular 21 applications.
+- [ ] Implement a GitHub Actions workflow that executes `nx affected -t lint test build` on every Pull Request.
+- [ ] (Optional) Scaffold a shared `ui-components` library in `libs/` to ensure visual consistency across MFEs.
+
+---
+
+### 🛠 Technical Constraints & References
+- **Nx Standards**: Use `nx affected` to keep CI times efficient.
+- **Docker**: Maintain multi-stage builds and ensure the build context remains at the root of the repository.
+- **Angular**: Follow standalone component and Signal-based testing patterns.
+- **Reference Docs**: 
+    - [System Architecture](../../concepts/architecture.md)
+    - [Coding Standards](../../how-to/coding-standards.md)
+
+---
+
+### 🚦 Status
+- **Current Status**: `Planned`
+- **Priority**: `High`
+- **Assignee**: AI Agent / Platform Team
+
+## References
+- [Backlog Index](../index.md)
+- [Backlog Guidelines](../GUIDELINES.md)
+
+## Change log
+- **2026-04-20**: Created as a result of a comprehensive platform audit.

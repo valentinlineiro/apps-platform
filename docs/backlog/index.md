@@ -26,7 +26,10 @@ Consult this index to track project progress, identify active implementation tra
 | **B-003** | [**Grocery List Optimizer Review**](items/B-003%20-%20Grocery%20List%20Optimizer%20Review.md) | `Draft` | `Low` |
 
 ### 🛠 Technical & Infrastructure (Category T)
-*(Currently No Active Items)*
+| ID | Initiative | Status | Priority |
+| :--- | :--- | :--- | :--- |
+| **T-001** | [**Replace Heartbeat Registry With Postgres App Catalog**](items/T-001%20-%20Replace%20Heartbeat%20Registry%20With%20Postgres%20App%20Catalog.md) | `Planned` | `High` |
+| **T-002** | [**Platform Stabilization and Technical Debt**](items/T-002%20-%20Platform%20Stabilization%20and%20Technical%20Debt.md) | `Planned` | `High` |
 
 ### 🎨 UX & UI Enhancements (Category U)
 *(Currently No Active Items)*
