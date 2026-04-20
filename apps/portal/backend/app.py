@@ -11,7 +11,7 @@ import requests as http_requests
 from flask import Flask, jsonify, redirect, request, session
 from flask_cors import CORS
 from platform_sdk.observability import setup_logging
-from backend_core import register_error_handlers, require_session
+from platform_sdk import register_error_handlers, require_session
 from adapters.sql.audit_repo import SqlAuditRepository
 from adapters.sql.plugin_repo import SqlPluginRepository
 from adapters.sql.tenant_repo import SqlTenantRepository

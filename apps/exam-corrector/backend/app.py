@@ -4,7 +4,7 @@ from flask import Flask
 from flask_cors import CORS
 from platform_sdk.observability import setup_logging
 from platform_sdk import start_registration
-from backend_core import register_error_handlers
+from platform_sdk import register_error_handlers
 
 import config
 from services import template_service, job_service

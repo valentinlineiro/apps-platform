@@ -6,7 +6,7 @@ from flask import Flask
 from flask_cors import CORS
 from platform_sdk.observability import setup_logging
 from platform_sdk import start_registration
-from backend_core import register_error_handlers
+from platform_sdk import register_error_handlers
 
 from adapters.routes.aneca import create_aneca_blueprint
 from adapters.sql.article_repo import SqlArticleRepository

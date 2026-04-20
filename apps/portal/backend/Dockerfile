@@ -1,7 +1,6 @@
 FROM python:3.11-slim
 WORKDIR /app
 COPY libs/platform-python-sdk/ /libs/platform-python-sdk/
-COPY libs/backend-core/ /libs/backend-core/
 COPY apps/portal/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY apps/portal/backend/app.py .

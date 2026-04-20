@@ -11,7 +11,6 @@ RUN npx ng build aneca-advisor-element
 FROM python:3.11-slim
 WORKDIR /app
 COPY libs/platform-python-sdk/ /libs/platform-python-sdk/
-COPY libs/backend-core/ /libs/backend-core/
 COPY apps/aneca-advisor/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY apps/aneca-advisor/backend/ .
