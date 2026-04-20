@@ -1,0 +1,316 @@
+<div class="aneca-advisor">
+
+  <!-- Header -->
+  <header class="header">
+    <h1>🎓 ANECA Advisor</h1>
+    <div class="header-controls">
+      <select [value]="figura()" (change)="figura.set($any($event.target).value)">
+        @for (f of figuras; track f) {
+          <option [value]="f">{{ f }}</option>
+        }
+      </select>
+      <select [value]="fieldKey()" (change)="fieldKey.set($any($event.target).value)">
+        @for (entry of fieldEntries(); track entry[0]) {
+          <option [value]="entry[0]">{{ entry[1] }}</option>
+        }
+      </select>
+      <label class="inline-label">
+        <span>Sexenios</span>
+        <input type="number" min="0" max="10" [value]="sexenios()"
+               (input)="sexenios.set(+$any($event.target).value)" />
+      </label>
+      @if (fastTrack()) {
+        <span class="badge badge-fast">⚡ Fast Track</span>
+      }
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="tabs">
+    @for (tab of tabs; track tab.id) {
+      <button class="tab-btn" [class.active]="activeTab() === tab.id"
+              (click)="activeTab.set(tab.id)">
+        {{ tab.label }}
+      </button>
+    }
+  </nav>
+
+  <!-- Error banner -->
+  @if (error()) {
+    <div class="error-banner">⚠️ {{ error() }}</div>
+  }
+
+  <!-- Tab content -->
+  <div class="tab-content">
+
+    <!-- ── Investigación ───────────────────────────────────────────────── -->
+    @if (activeTab() === 'investigacion') {
+      <section class="section">
+
+        <!-- ORCID sync -->
+        <div class="card">
+          <h2>Sincronizar ORCID</h2>
+          <div class="row gap-sm">
+            <input class="input-text" placeholder="0000-0000-0000-0000"
+                   [value]="orcidId()"
+                   (input)="orcidId.set($any($event.target).value)"
+                   (keydown.enter)="syncOrcid()" />
+            <button class="btn btn-primary" (click)="syncOrcid()" [disabled]="syncing()">
+              {{ syncing() ? 'Sincronizando…' : 'Sincronizar' }}
+            </button>
+            <button class="btn btn-secondary" (click)="saveArticles()" [disabled]="saving()">
+              {{ saving() ? 'Guardando…' : '💾 Guardar' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Articles table -->
+        <div class="card">
+          <h2>Publicaciones ({{ articlesOnly().length }} artículos)</h2>
+          @if (articles().length === 0) {
+            <p class="empty-hint">No hay publicaciones. Sincroniza tu ORCID o añádelas manualmente.</p>
+          } @else {
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Título</th>
+                    <th>Revista</th>
+                    <th>Q</th>
+                    <th>Posición</th>
+                    <th>Autores</th>
+                    <th>Citas</th>
+                    <th>Score</th>
+                    @for (role of creditRoles; track role) {
+                      <th class="role-col">{{ role }}</th>
+                    }
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (art of articles(); track $index; let i = $index) {
+                    <tr [class.risk-row]="art.es_riesgo">
+                      <td class="td-titulo" [title]="art.titulo">{{ art.titulo }}</td>
+                      <td>{{ art.revista }}</td>
+                      <td>
+                        <span class="badge" [class]="'badge-q' + art.cuartil.toLowerCase()">
+                          {{ art.cuartil }}
+                        </span>
+                      </td>
+                      <td>{{ art.posicion }}</td>
+                      <td class="td-num">{{ art.num_autores }}</td>
+                      <td class="td-num">{{ art.citas }}</td>
+                      <td class="td-num">
+                        @if (art.score != null) {
+                          <span [class.score-risk]="art.es_riesgo">{{ art.score | number:'1.1-1' }}</span>
+                        }
+                      </td>
+                      @for (role of creditRoles; track role) {
+                        <td class="td-check">
+                          <input type="checkbox" [checked]="hasRole(art, role)"
+                                 (change)="toggleRole(i, role, $any($event.target).checked)" />
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+
+      </section>
+    }
+
+    <!-- ── Docencia ────────────────────────────────────────────────────── -->
+    @if (activeTab() === 'docencia') {
+      <section class="section">
+        <div class="card form-card">
+          <h2>Actividad Docente</h2>
+
+          <label class="field-label">
+            <span>Horas lectivas anuales</span>
+            <input type="number" min="0" max="600" [value]="horas()"
+                   (input)="horas.set(+$any($event.target).value)" />
+            <span class="hint">Mínimo: 240 h (TU) / 200 h (CU)</span>
+          </label>
+
+          <label class="field-label">
+            <span>Evaluación DOCENTIA</span>
+            <select [value]="docentia()" (change)="docentia.set($any($event.target).value)">
+              @for (level of docEntiaLevels; track level) {
+                <option [value]="level">{{ level }}</option>
+              }
+            </select>
+            <span class="hint">Se requiere al menos Notable para acreditación estándar</span>
+          </label>
+        </div>
+      </section>
+    }
+
+    <!-- ── Transferencia ──────────────────────────────────────────────── -->
+    @if (activeTab() === 'transferencia') {
+      <section class="section">
+        <div class="card form-card">
+          <h2>Transferencia e Innovación</h2>
+
+          <label class="field-label checkbox-label">
+            <input type="checkbox" [checked]="sexenioTransferencia()"
+                   (change)="sexenioTransferencia.set($any($event.target).checked)" />
+            <span>Sexenio de transferencia</span>
+            <span class="hint">(+3 puntos)</span>
+          </label>
+
+          <label class="field-label">
+            <span>Patentes</span>
+            <input type="number" min="0" [value]="patentes()"
+                   (input)="patentes.set(+$any($event.target).value)" />
+            <span class="hint">Cada patente: +1 punto</span>
+          </label>
+
+          <label class="field-label">
+            <span>Spin-offs</span>
+            <input type="number" min="0" [value]="spinOffs()"
+                   (input)="spinOffs.set(+$any($event.target).value)" />
+            <span class="hint">Cada spin-off: +2 puntos</span>
+          </label>
+
+          <label class="field-label">
+            <span>Contratos Art. 83</span>
+            <input type="number" min="0" [value]="contratosArt83()"
+                   (input)="contratosArt83.set(+$any($event.target).value)" />
+            <span class="hint">Cada contrato: +1 punto</span>
+          </label>
+
+          <label class="field-label checkbox-label">
+            <input type="checkbox" [checked]="divulgacion()"
+                   (change)="divulgacion.set($any($event.target).checked)" />
+            <span>Actividad de divulgación</span>
+            <span class="hint">(+1 punto)</span>
+          </label>
+        </div>
+      </section>
+    }
+
+    <!-- ── Idoneidad ──────────────────────────────────────────────────── -->
+    @if (activeTab() === 'idoneidad') {
+      <section class="section">
+        <div class="card">
+          <h2>Evaluación de Idoneidad</h2>
+          <button class="btn btn-primary btn-lg" (click)="evaluate()" [disabled]="evaluating()">
+            {{ evaluating() ? 'Evaluando…' : '🔍 Evaluar ahora' }}
+          </button>
+
+          @if (result()) {
+            <div class="verdict" [class.verdict-ok]="result()!.apto" [class.verdict-fail]="!result()!.apto">
+              <span class="verdict-icon">{{ result()!.apto ? '✅' : '❌' }}</span>
+              <span class="verdict-text">{{ result()!.apto ? 'APTO' : 'NO APTO' }}</span>
+              @if (result()!.fast_track) {
+                <span class="badge badge-fast">⚡ Fast Track</span>
+              }
+            </div>
+
+            <div class="metrics-grid">
+              <!-- Investigación -->
+              <div class="metric-card">
+                <h3>🔍 Investigación</h3>
+                <div class="metric-row">
+                  <span>Sexenios</span>
+                  <span [class]="metricClass(result()!.detalle.investigacion.ok)">
+                    {{ result()!.detalle.investigacion.sexenios }} / {{ result()!.detalle.investigacion.min_sexenios }}
+                  </span>
+                </div>
+                @if (result()!.detalle.investigacion.validos != null) {
+                  <div class="metric-row">
+                    <span>Artículos válidos</span>
+                    <span [class]="metricClass(result()!.detalle.investigacion.validos! >= result()!.detalle.investigacion.min_validos)">
+                      {{ result()!.detalle.investigacion.validos }} / {{ result()!.detalle.investigacion.min_validos }}
+                    </span>
+                  </div>
+                }
+              </div>
+
+              <!-- Docencia -->
+              <div class="metric-card">
+                <h3>👨‍🏫 Docencia</h3>
+                <div class="metric-row">
+                  <span>Horas</span>
+                  <span [class]="metricClass(result()!.detalle.docencia.horas_ok)">
+                    {{ result()!.detalle.docencia.horas }} / {{ result()!.detalle.docencia.min_horas }}
+                  </span>
+                </div>
+                <div class="metric-row">
+                  <span>DOCENTIA</span>
+                  <span [class]="metricClass(result()!.detalle.docencia.docentia_ok)">
+                    {{ result()!.detalle.docencia.docentia }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Transferencia -->
+              <div class="metric-card">
+                <h3>🚀 Transferencia</h3>
+                <div class="metric-row">
+                  <span>Puntos</span>
+                  <span [class]="metricClass(result()!.detalle.transferencia.ok)">
+                    {{ result()!.detalle.transferencia.points }} / {{ result()!.detalle.transferencia.min_points }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- Compensación -->
+              <div class="metric-card">
+                <h3>⚖️ Compensación</h3>
+                <div class="metric-row">
+                  <span>Estado</span>
+                  <span [class]="metricClass(result()!.detalle.compensacion.ok)">
+                    {{ result()!.detalle.compensacion.ok ? 'Disponible' : 'No aplica' }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Explainability -->
+            <div class="explain-block">
+              <h3>📋 Razonamiento</h3>
+              <p><strong>Decisión:</strong> {{ result()!.explainability.decision }}</p>
+              <p><strong>Investigación:</strong> {{ result()!.explainability.research_reason }}</p>
+              <p><strong>Docencia:</strong> {{ result()!.explainability.teaching_reason }}</p>
+              <p><strong>Transferencia:</strong> {{ result()!.explainability.transfer_reason }}</p>
+              @if (result()!.explainability.compensation_reason) {
+                <p><strong>Compensación:</strong> {{ result()!.explainability.compensation_reason }}</p>
+              }
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <!-- ── Horizonte ──────────────────────────────────────────────────── -->
+    @if (activeTab() === 'horizonte') {
+      <section class="section">
+        <div class="card">
+          <h2>Plan de Acción</h2>
+
+          @if (!result()) {
+            <p class="empty-hint">Ejecuta la evaluación en la pestaña Idoneidad para ver el plan de acción.</p>
+          } @else if (result()!.action_plan.length === 0) {
+            <p class="empty-hint">¡Sin acciones pendientes! Tu perfil cumple todos los criterios.</p>
+          } @else {
+            <div class="action-list">
+              @for (action of result()!.action_plan; track $index) {
+                <div class="action-item" [class]="priorityClass(action.priority)">
+                  <div class="action-header">
+                    <span class="priority-badge">{{ action.priority }}</span>
+                    <strong>{{ action.title }}</strong>
+                  </div>
+                  <p class="action-why">{{ action.why }}</p>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+  </div>
+</div>

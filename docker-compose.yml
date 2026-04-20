@@ -12,6 +12,7 @@ services:
     depends_on:
       - portal-backend
       - exam-corrector-backend
+      - aneca-advisor-backend
     restart: unless-stopped
 
 
@@ -43,12 +44,9 @@ services:
       - OAUTH_SCOPE=openid profile email
       - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-https://localhost/auth/callback}
       - OAUTH_AUTHORIZE_URL=${OAUTH_AUTHORIZE_URL:-https://localhost/realms/apps-platform/protocol/openid-connect/auth}
-      - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-https://localhost/realms/apps-platform/protocol/openid-connect/token}
-      - OAUTH_USERINFO_URL=${OAUTH_USERINFO_URL:-https://localhost/realms/apps-platform/protocol/openid-connect/userinfo}
+      - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/token}
+      - OAUTH_USERINFO_URL=${OAUTH_USERINFO_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/userinfo}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
-      - OAUTH_VERIFY_SSL=false
-    extra_hosts:
-      - "localhost:172.19.0.7"
     restart: unless-stopped
 
   exam-corrector-backend:
@@ -73,6 +71,27 @@ services:
       - ./libs:/libs
     depends_on:
       - portal-backend
+    restart: unless-stopped
+
+  aneca-advisor-backend:
+    build: ./apps/aneca-advisor/backend
+    expose:
+      - "5001"
+    volumes:
+      - ./libs:/libs
+      - ./apps/aneca-advisor/backend/static:/app/static
+    command: >
+      bash -c "cd /libs/platform-python-sdk && python setup.py develop && cd /app && gunicorn app:app --bind 0.0.0.0:5001 --workers 2 --timeout 120"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      portal-backend:
+        condition: service_started
+    environment:
+      - PORTAL_SESSION_SECRET=${PORTAL_SESSION_SECRET:-dev-portal-session-secret}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
+      - PORTAL_BACKEND_URL=http://portal-backend:5000
     restart: unless-stopped
 
   # attendance-checker-backend:   # uncomment when backend is added
@@ -115,9 +134,10 @@ services:
       - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-admin}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
       - KC_HEALTH_ENABLED=true
-      - KC_HOSTNAME=localhost
+      - KC_HOSTNAME=https://localhost
       - KC_PROXY=edge
       - KC_HOSTNAME_STRICT=false
+      - KC_HOSTNAME_BACKCHANNEL_DYNAMIC=true
       - KC_DB=postgres
       - KC_DB_URL=jdbc:postgresql://postgres:5432/keycloak
       - KC_DB_USERNAME=${POSTGRES_USER:-keycloak}
