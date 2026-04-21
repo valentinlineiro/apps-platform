@@ -1,11 +1,8 @@
 import os
-import sqlite3
-import urllib.parse
 
-from flask import Flask
+from flask import Flask, jsonify
 from flask_cors import CORS
 from apps_platform_sdk.observability import setup_logging
-from apps_platform_sdk import start_registration
 from apps_platform_sdk import register_error_handlers
 
 from adapters.routes.aneca import create_aneca_blueprint
@@ -28,9 +25,19 @@ app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-REGISTRY_DB_PATH = os.environ.get("REGISTRY_DB_PATH", "/tmp/aneca_registry.sqlite3")
-_AUTO_PK = "SERIAL PRIMARY KEY" if DATABASE_URL else "INTEGER PRIMARY KEY AUTOINCREMENT"
-_FLOAT = "DOUBLE PRECISION" if DATABASE_URL else "REAL"
+
+_MANIFEST = {
+    "manifestVersion": 1,
+    "id": "aneca-advisor",
+    "name": "ANECA Advisor",
+    "description": "Simulador de acreditación ANECA para investigadores universitarios",
+    "route": "aneca-advisor",
+    "icon": "🎓",
+    "status": "wip",
+    "scriptUrl": "/apps/aneca-advisor/element/main.js",
+    "elementTag": "aneca-advisor-app",
+    "backend": {"pathPrefix": "/api/aneca/"},
+}
 
 
 class _PgConn:
@@ -58,21 +65,17 @@ class _PgConn:
 
 
 def _db():
-    if DATABASE_URL:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        return _PgConn(conn)
-    conn = sqlite3.connect(REGISTRY_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    return _PgConn(conn)
 
 
 def _init_db() -> None:
     app.logger.info("initializing aneca database schema")
     with _db() as conn:
         conn.execute(
-            f"""
+            """
             CREATE TABLE IF NOT EXISTS aneca_journal_index (
-                id       {_AUTO_PK},
+                id       SERIAL PRIMARY KEY,
                 issn_1   TEXT,
                 issn_2   TEXT,
                 quartile TEXT NOT NULL,
@@ -85,16 +88,21 @@ def _init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_aneca_journal_issn1 ON aneca_journal_index (issn_1)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_aneca_journal_issn2 ON aneca_journal_index (issn_2)")
         conn.execute(
-            f"""
+            """
             CREATE TABLE IF NOT EXISTS aneca_articles (
-                id           {_AUTO_PK},
+                id           SERIAL PRIMARY KEY,
                 user_id      TEXT NOT NULL,
                 article_json TEXT NOT NULL,
-                created_at   {_FLOAT} NOT NULL
+                created_at   DOUBLE PRECISION NOT NULL
             )
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_aneca_articles_user ON aneca_articles (user_id)")
+
+
+@app.get("/manifest")
+def manifest():
+    return jsonify(_MANIFEST)
 
 
 def _bootstrap() -> None:
@@ -102,18 +110,6 @@ def _bootstrap() -> None:
     journal_repo = SqlJournalQuartileGateway(_db)
     article_repo = SqlArticleRepository(_db)
     app.register_blueprint(create_aneca_blueprint(journal_repo, article_repo))
-    start_registration({
-        "manifestVersion": 1,
-        "id": "aneca-advisor",
-        "name": "ANECA Advisor",
-        "description": "Simulador de acreditación ANECA para investigadores universitarios",
-        "route": "aneca-advisor",
-        "icon": "🎓",
-        "status": "wip",
-        "scriptUrl": "/apps/aneca-advisor/element/main.js",
-        "elementTag": "aneca-advisor-app",
-        "backend": {"pathPrefix": "/api/aneca/"},
-    })
 
 
 if __name__ == "__main__":

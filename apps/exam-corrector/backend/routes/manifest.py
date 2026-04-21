@@ -6,20 +6,24 @@ bp = Blueprint("manifest", __name__)
 ELEMENT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "static", "element")
 
 
+_MANIFEST = {
+    "manifestVersion": 1,
+    "id": "exam-corrector",
+    "name": "exam-corrector",
+    "description": "Corrección automática de exámenes tipo test con detección óptica de marcas",
+    "route": "exam-corrector",
+    "icon": "📝",
+    "status": "stable",
+    "scriptUrl": "/apps/exam-corrector/element/main.js",
+    "elementTag": "exam-corrector-app",
+    "backend": {"pathPrefix": "/exam-corrector/"},
+}
+
+
+@bp.route("/manifest")
 @bp.route("/apps/exam-corrector/manifest.json")
 def manifest():
-    return jsonify({
-        "manifestVersion": 1,
-        "id": "exam-corrector",
-        "name": "exam-corrector",
-        "description": "Corrección automática de exámenes tipo test con detección óptica de marcas",
-        "route": "exam-corrector",
-        "icon": "📝",
-        "status": "stable",
-        "scriptUrl": "/apps/exam-corrector/element/main.js",
-        "elementTag": "exam-corrector-app",
-        "backend": {"pathPrefix": "/exam-corrector/"}
-    })
+    return jsonify(_MANIFEST)
 
 
 @bp.route("/apps/exam-corrector/element/<path:filename>")

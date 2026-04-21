@@ -28,7 +28,7 @@ Consult this index to track project progress, identify active implementation tra
 ### 🛠 Technical & Infrastructure (Category T)
 | ID | Initiative | Status | Priority |
 | :--- | :--- | :--- | :--- |
-| **T-001** | [**Replace Heartbeat Registry With Postgres App Catalog**](items/T-001%20-%20Replace%20Heartbeat%20Registry%20With%20Postgres%20App%20Catalog.md) | `Planned` | `High` |
+| **T-001** | [**Replace Heartbeat Registry With Postgres App Catalog**](items/T-001%20-%20Replace%20Heartbeat%20Registry%20With%20Postgres%20App%20Catalog.md) | `Done` | `High` |
 | **T-002** | [**Platform Stabilization and Technical Debt**](items/T-002%20-%20Platform%20Stabilization%20and%20Technical%20Debt.md) | `Planned` | `High` |
 
 ### 🎨 UX & UI Enhancements (Category U)

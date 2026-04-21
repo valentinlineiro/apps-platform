@@ -35,14 +35,14 @@ This is the wrong tradeoff for a controlled Nx monorepo where the set of apps is
 - **Infra**: Docker and environment configuration for Postgres-backed catalog storage and optional reconciliation jobs.
 
 ### ✅ Acceptance Criteria
-- [ ] `portal-backend` no longer uses SQLite fallback for app registry/catalog persistence.
-- [ ] App catalog state is persisted in Postgres and modeled as portal-owned metadata, not heartbeat state.
-- [ ] Each backend app exposes a manifest endpoint or equivalent portal-readable manifest source.
-- [ ] `portal-backend` can reconcile app metadata and runtime availability without app-side heartbeat threads.
-- [ ] `start_registration()` is removed from app startup code and deprecated or deleted from `apps-platform-sdk`.
-- [ ] `GET /api/registry` or its replacement continues to return the effective installed-and-available app list for a tenant.
-- [ ] Existing install/catalog behavior for plugins/apps is preserved or explicitly migrated without regression.
-- [ ] Tests cover manifest reconciliation, unavailable app handling, and catalog reads after migration.
+- [x] `portal-backend` no longer uses SQLite fallback for app registry/catalog persistence.
+- [x] App catalog state is persisted in Postgres and modeled as portal-owned metadata, not heartbeat state.
+- [x] Each backend app exposes a manifest endpoint or equivalent portal-readable manifest source.
+- [x] `portal-backend` can reconcile app metadata and runtime availability without app-side heartbeat threads.
+- [x] `start_registration()` is removed from app startup code and deprecated or deleted from `apps-platform-sdk`.
+- [x] `GET /api/registry` or its replacement continues to return the effective installed-and-available app list for a tenant.
+- [x] Existing install/catalog behavior for plugins/apps is preserved or explicitly migrated without regression.
+- [x] Tests cover manifest reconciliation, unavailable app handling, and catalog reads after migration.
 
 ### 🛠 Technical Constraints & References
 - **Persistence**: Use Postgres as the source of truth for portal-owned catalog data.
@@ -77,9 +77,9 @@ This is the wrong tradeoff for a controlled Nx monorepo where the set of apps is
    - Remove stale heartbeat/registry language from docs and code comments.
 
 ### 🚦 Status
-- **Current Status**: `Planned`
+- **Current Status**: `Done`
 - **Priority**: `High`
-- **Assignee**: Unassigned
+- **Assignee**: Claude Code
 
 ## References
 - [System Architecture](../../concepts/architecture.md)

@@ -3,7 +3,6 @@ import os
 from flask import Flask
 from flask_cors import CORS
 from apps_platform_sdk.observability import setup_logging
-from apps_platform_sdk import start_registration
 from apps_platform_sdk import register_error_handlers
 
 import config
@@ -33,15 +32,3 @@ app.register_blueprint(manifest.bp)
 app.register_blueprint(batch.bp)
 app.register_blueprint(settings.bp)
 
-start_registration({
-    "manifestVersion": 1,
-    "id": "exam-corrector",
-    "name": "exam-corrector",
-    "description": "Corrección automática de exámenes con Gemini Vision",
-    "route": "exam-corrector",
-    "icon": "📝",
-    "status": "stable",
-    "scriptUrl": "/apps/exam-corrector/element/main.js",
-    "elementTag": "exam-corrector-app",
-    "backend": {"pathPrefix": "/exam-corrector/"}
-})

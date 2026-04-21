@@ -4,8 +4,14 @@
   "projectType": "library",
   "sourceRoot": "libs/apps-platform-sdk",
   "targets": {
+    "setup": {
+      "command": "python3 -m venv .venv && .venv/bin/python3 -m pip install -e .",
+      "options": {
+        "cwd": "libs/apps-platform-sdk"
+      }
+    },
     "test": {
-      "command": "python -m pytest",
+      "command": ".venv/bin/python3 -m pytest",
       "options": {
         "cwd": "libs/apps-platform-sdk"
       }

@@ -7,7 +7,8 @@ name = "apps-platform-sdk"
 version = "0.1.0"
 dependencies = [
     "requests>=2.31.0",
-    "flask>=3.0"
+    "flask>=3.0",
+    "pytest>=8.0"
 ]
 
 [tool.setuptools.packages.find]

@@ -1,63 +1,60 @@
-"""Tests for profile, preferences, tenant-preferences, and tenant-settings endpoints."""
-import importlib
+"""Tests for profile, preferences, tenant-preferences, and tenant-settings endpoints.
+
+Integration test classes (PreferencesTests, ProfileTests, etc.) require a live
+Postgres connection and are skipped unless DATABASE_URL is set.
+ProfileUseCaseTests runs in any environment — it uses an in-memory fake repo.
+"""
 import json
 import os
-import sqlite3
 import sys
-import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+os.environ.setdefault("PORTAL_SESSION_SECRET", "test-secret")
 
-def _load_module(db_path: str):
-    os.environ["REGISTRY_DB_PATH"] = db_path
-    os.environ["PORTAL_SESSION_SECRET"] = "test-secret"
-    os.environ.pop("DATABASE_URL", None)
-    empty_static = str(Path(db_path).parent / "empty_static.json")
-    with open(empty_static, "w") as f:
-        f.write("[]")
-    os.environ["STATIC_APPS_FILE"] = empty_static
-    mod = importlib.import_module("app")
-    return importlib.reload(mod)
+_psycopg2_mock = MagicMock()
+sys.modules.setdefault("psycopg2", _psycopg2_mock)
+sys.modules.setdefault("psycopg2.extras", _psycopg2_mock.extras)
+
+import app as _app_mod  # noqa: E402
+
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+_REAL_DB = DATABASE_URL and "localhost/test" not in DATABASE_URL
 
 
-def _client(mod, user_id: str | None = None):
-    c = mod.app.test_client()
+def _client(user_id=None):
+    c = _app_mod.app.test_client()
     if user_id:
         with c.session_transaction() as sess:
             sess["user_id"] = user_id
     return c
 
 
-def _make_user(mod, email="user@example.com", name="Test User"):
-    return mod._upsert_user(email, name, "oidc", f"sub-{email}")
+def _make_user(email="user@example.com", name="Test User"):
+    return _app_mod._upsert_user(email, name, "oidc", f"sub-{email}")
 
 
-def _make_owner(mod, email="owner@example.com"):
-    uid = mod._upsert_user(email, "Owner", "oidc", f"sub-{email}")
-    conn = sqlite3.connect(os.environ["REGISTRY_DB_PATH"])
-    conn.execute(
-        "UPDATE tenant_memberships SET role='owner' WHERE tenant_id='default' AND user_id=?",
-        (uid,),
-    )
-    conn.commit()
-    conn.close()
+def _make_owner(email="owner@example.com"):
+    uid = _app_mod._upsert_user(email, "Owner", "oidc", f"sub-{email}")
+    with _app_mod._db() as conn:
+        conn.execute(
+            "UPDATE tenant_memberships SET role='owner' WHERE tenant_id='default' AND user_id=?",
+            (uid,),
+        )
     return uid
 
 
+@unittest.skipUnless(_REAL_DB, "DATABASE_URL not set — skipping Postgres integration tests")
 class PreferencesTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.mod = _load_module(str(Path(self.tmp.name) / "portal.sqlite3"))
-        self.uid = _make_user(self.mod)
-        self.client = _client(self.mod, self.uid)
-
-    def tearDown(self):
-        self.tmp.cleanup()
+        self.uid = _make_user()
+        self.client = _client(self.uid)
 
     def test_get_preferences_returns_defaults(self):
         r = self.client.get("/auth/me/preferences")
@@ -99,7 +96,7 @@ class PreferencesTests(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
     def test_get_preferences_requires_auth(self):
-        c = _client(self.mod)
+        c = _client()
         self.assertEqual(c.get("/auth/me/preferences").status_code, 401)
 
     def test_patch_preferences_is_idempotent(self):
@@ -109,15 +106,11 @@ class PreferencesTests(unittest.TestCase):
         self.assertEqual(r.get_json()["theme"], "system")
 
 
+@unittest.skipUnless(_REAL_DB, "DATABASE_URL not set — skipping Postgres integration tests")
 class ProfileTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.mod = _load_module(str(Path(self.tmp.name) / "portal.sqlite3"))
-        self.uid = _make_user(self.mod)
-        self.client = _client(self.mod, self.uid)
-
-    def tearDown(self):
-        self.tmp.cleanup()
+        self.uid = _make_user()
+        self.client = _client(self.uid)
 
     def test_get_profile_returns_defaults(self):
         r = self.client.get("/auth/me/profile")
@@ -154,19 +147,15 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(data["display_name"], "New Name")
 
     def test_get_profile_requires_auth(self):
-        c = _client(self.mod)
+        c = _client()
         self.assertEqual(c.get("/auth/me/profile").status_code, 401)
 
 
+@unittest.skipUnless(_REAL_DB, "DATABASE_URL not set — skipping Postgres integration tests")
 class TenantPreferencesTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.mod = _load_module(str(Path(self.tmp.name) / "portal.sqlite3"))
-        self.uid = _make_user(self.mod)
-        self.client = _client(self.mod, self.uid)
-
-    def tearDown(self):
-        self.tmp.cleanup()
+        self.uid = _make_user()
+        self.client = _client(self.uid)
 
     def test_get_tenant_preferences_returns_defaults(self):
         r = self.client.get("/auth/me/tenant-preferences")
@@ -196,17 +185,13 @@ class TenantPreferencesTests(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
 
+@unittest.skipUnless(_REAL_DB, "DATABASE_URL not set — skipping Postgres integration tests")
 class TenantSettingsTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.mod = _load_module(str(Path(self.tmp.name) / "portal.sqlite3"))
-        self.owner_uid = _make_owner(self.mod)
-        self.member_uid = _make_user(self.mod, "member@example.com", "Member")
-        self.owner_client = _client(self.mod, self.owner_uid)
-        self.member_client = _client(self.mod, self.member_uid)
-
-    def tearDown(self):
-        self.tmp.cleanup()
+        self.owner_uid = _make_owner()
+        self.member_uid = _make_user("member@example.com", "Member")
+        self.owner_client = _client(self.owner_uid)
+        self.member_client = _client(self.member_uid)
 
     def test_get_settings_accessible_to_member(self):
         r = self.member_client.get("/api/tenants/default/settings")
@@ -233,7 +218,7 @@ class TenantSettingsTests(unittest.TestCase):
         self.assertEqual(r.status_code, 403)
 
     def test_get_settings_requires_auth(self):
-        c = _client(self.mod)
+        c = _client()
         self.assertEqual(c.get("/api/tenants/default/settings").status_code, 401)
 
     def test_patch_settings_updates_name(self):
@@ -245,15 +230,11 @@ class TenantSettingsTests(unittest.TestCase):
         self.assertEqual(r.get_json()["name"], "Nuevo nombre")
 
 
+@unittest.skipUnless(_REAL_DB, "DATABASE_URL not set — skipping Postgres integration tests")
 class AuditEndpointTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.mod = _load_module(str(Path(self.tmp.name) / "portal.sqlite3"))
-        self.uid = _make_user(self.mod)
-        self.client = _client(self.mod, self.uid)
-
-    def tearDown(self):
-        self.tmp.cleanup()
+        self.uid = _make_user()
+        self.client = _client(self.uid)
 
     def test_get_audit_returns_empty_for_new_user(self):
         r = self.client.get("/api/audit")
@@ -261,9 +242,9 @@ class AuditEndpointTests(unittest.TestCase):
         self.assertEqual(r.get_json(), [])
 
     def test_get_audit_returns_own_entries_only(self):
-        other_uid = _make_user(self.mod, "other@example.com", "Other")
-        self.mod._log_audit(self.uid, "test.action", "resource", "r-1")
-        self.mod._log_audit(other_uid, "other.action", "resource", "r-2")
+        other_uid = _make_user("other@example.com", "Other")
+        _app_mod._log_audit(self.uid, "test.action", "resource", "r-1")
+        _app_mod._log_audit(other_uid, "other.action", "resource", "r-2")
         r = self.client.get("/api/audit")
         entries = r.get_json()
         self.assertEqual(len(entries), 1)
@@ -271,16 +252,15 @@ class AuditEndpointTests(unittest.TestCase):
 
     def test_get_audit_respects_limit(self):
         for i in range(10):
-            self.mod._log_audit(self.uid, f"action.{i}")
+            _app_mod._log_audit(self.uid, f"action.{i}")
         r = self.client.get("/api/audit?limit=3")
         self.assertEqual(len(r.get_json()), 3)
 
     def test_get_audit_requires_auth(self):
-        c = _client(self.mod)
-        self.assertEqual(c.get("/api/audit").status_code, 401)
+        self.assertEqual(_client().get("/api/audit").status_code, 401)
 
     def test_get_audit_entry_shape(self):
-        self.mod._log_audit(self.uid, "login", "session", "s-1")
+        _app_mod._log_audit(self.uid, "login", "session", "s-1")
         entries = self.client.get("/api/audit").get_json()
         self.assertEqual(len(entries), 1)
         e = entries[0]

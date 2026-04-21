@@ -1,212 +1,163 @@
 import importlib
 import os
-import sqlite3
 import sys
-import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+
+_psycopg2_mock = MagicMock()
+sys.modules.setdefault("psycopg2", _psycopg2_mock)
+sys.modules.setdefault("psycopg2.extras", _psycopg2_mock.extras)
+
+import app as app_module  # noqa: E402  (must be after mock injection)
+
+_EXAM_MANIFEST = {
+    "manifestVersion": 1,
+    "id": "exam-corrector",
+    "name": "exam-corrector",
+    "description": "Corrección automática de exámenes",
+    "route": "exam-corrector",
+    "icon": "📝",
+    "status": "stable",
+    "scriptUrl": "/apps/exam-corrector/element/main.js",
+    "elementTag": "exam-corrector-app",
+    "backend": {"pathPrefix": "/exam-corrector/"},
+}
+
+_STATIC_MANIFEST = {
+    "manifestVersion": 1,
+    "id": "attendance-checker",
+    "name": "attendance-checker",
+    "description": "Registro de asistencia",
+    "route": "attendance-checker",
+    "icon": "📋",
+    "status": "stable",
+    "scriptUrl": "/apps/attendance-checker/element/main.js",
+    "elementTag": "attendance-checker-app",
+    "backend": None,
+}
+
 
 class RegistryApiTests(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = str(Path(self.temp_dir.name) / "registry.sqlite3")
-        os.environ["REGISTRY_DB_PATH"] = self.db_path
-        os.environ["HEARTBEAT_TTL"] = "60"
-        self.app_module = importlib.import_module("app")
-        self.app_module = importlib.reload(self.app_module)
-        self.client = self.app_module.app.test_client()
-        self._login_test_user()
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
-        os.environ.pop("REGISTRY_DB_PATH", None)
-        os.environ.pop("HEARTBEAT_TTL", None)
-
-    def _login_test_user(self):
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO users (id, email, name, provider, provider_sub, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "oidc:test-user",
-                    "test@example.com",
-                    "Test User",
-                    "oidc",
-                    "test-user",
-                    0,
-                    0,
-                ),
-            )
-            conn.execute("INSERT OR IGNORE INTO roles(name) VALUES ('member')")
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO user_roles (user_id, role_id)
-                SELECT ?, id FROM roles WHERE name = 'member'
-                """,
-                ("oidc:test-user",),
-            )
+        self.client = app_module.app.test_client()
         with self.client.session_transaction() as sess:
             sess["user_id"] = "oidc:test-user"
 
-    def test_registry_lifecycle(self):
-        manifest = {
-            "manifestVersion": 1,
-            "id": "exam-corrector",
-            "name": "Exam Corrector",
-            "description": "Correccion automatica",
-            "route": "exam-corrector",
-            "icon": "X",
-            "status": "stable",
-            "backend": {"pathPrefix": "/exam-corrector/"},
-            "scriptUrl": "/apps/exam-corrector/element/main.js",
-            "elementTag": "exam-corrector-app",
-        }
+    def _membership(self, tenant_id="default"):
+        return {"id": tenant_id, "role": "member"}
 
-        res = self.client.post("/api/registry/register", json=manifest)
-        self.assertEqual(res.status_code, 200)
+    def test_registry_returns_available_apps_with_reachable_url(self):
+        """Apps whose app_url responds HTTP 200 appear in the registry."""
+        with (
+            patch.object(app_module, "_get_tenant_membership", return_value=self._membership()),
+            patch.object(app_module, "_available", return_value=[_EXAM_MANIFEST]) as mock_avail,
+        ):
+            res = self.client.get("/api/registry")
 
-        res = self.client.get("/api/registry")
         self.assertEqual(res.status_code, 200)
         payload = res.get_json()
         self.assertEqual(len(payload), 1)
-        self.assertEqual(payload[0]["id"], manifest["id"])
+        self.assertEqual(payload[0]["id"], "exam-corrector")
+        mock_avail.assert_called_once_with("default")
 
-        res = self.client.post("/api/registry/heartbeat/exam-corrector")
-        self.assertEqual(res.status_code, 200)
+    def test_registry_excludes_unreachable_apps(self):
+        """Apps whose app_url is unreachable are excluded."""
+        with (
+            patch.object(app_module, "_get_tenant_membership", return_value=self._membership()),
+            patch.object(app_module, "_available", return_value=[]),
+        ):
+            res = self.client.get("/api/registry")
 
-        res = self.client.delete("/api/registry/exam-corrector")
-        self.assertEqual(res.status_code, 200)
-
-        res = self.client.get("/api/registry")
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.get_json(), [])
-
-    def test_registry_filters_stale_entries(self):
-        os.environ["HEARTBEAT_TTL"] = "1"
-        self.app_module = importlib.reload(self.app_module)
-        self.client = self.app_module.app.test_client()
-
-        manifest = {
-            "manifestVersion": 1,
-            "id": "stale-app",
-            "name": "Stale App",
-            "description": "Should expire",
-            "route": "stale-app",
-            "icon": "X",
-            "status": "wip",
-            "backend": None,
-        }
-
-        res = self.client.post("/api/registry/register", json=manifest)
-        self.assertEqual(res.status_code, 200)
-
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("UPDATE registry SET last_heartbeat = 0 WHERE id = ?", ("stale-app",))
-
-        res = self.client.get("/api/registry")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.get_json(), [])
 
-    def test_register_requires_manifest_version(self):
-        manifest = {
-            "id": "missing-version",
-            "name": "Missing Version",
-            "description": "No version set",
-            "route": "missing-version",
-            "icon": "X",
-            "status": "stable",
-            "backend": None,
-        }
+    def test_registry_includes_static_apps_without_url(self):
+        """Apps with no app_url (frontend-only) are always included."""
+        with (
+            patch.object(app_module, "_get_tenant_membership", return_value=self._membership()),
+            patch.object(app_module, "_available", return_value=[_STATIC_MANIFEST]),
+        ):
+            res = self.client.get("/api/registry")
 
-        res = self.client.post("/api/registry/register", json=manifest)
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 200)
         payload = res.get_json()
-        self.assertEqual(payload["error"], "invalid_manifest")
-        self.assertIn("manifestVersion", payload["fieldErrors"])
+        self.assertEqual(payload[0]["id"], "attendance-checker")
 
-    def test_register_rejects_unsupported_manifest_version(self):
-        manifest = {
-            "manifestVersion": 2,
-            "id": "unsupported-version",
-            "name": "Unsupported Version",
-            "description": "Newer than supported",
-            "route": "unsupported-version",
-            "icon": "X",
-            "status": "stable",
-            "backend": None,
-        }
+    def test_registry_returns_empty_for_unknown_user(self):
+        """Users with no tenant membership get an empty registry."""
+        with patch.object(app_module, "_get_tenant_membership", return_value=None):
+            res = self.client.get("/api/registry")
 
-        res = self.client.post("/api/registry/register", json=manifest)
-        self.assertEqual(res.status_code, 422)
-        payload = res.get_json()
-        self.assertEqual(payload["error"], "unsupported_manifest_version")
-        self.assertEqual(payload["manifestVersion"], 2)
-        self.assertEqual(payload["supportedVersions"], [1])
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.get_json(), [])
 
-    def test_register_rejects_boolean_manifest_version(self):
-        manifest = {
-            "manifestVersion": True,
-            "id": "bool-version",
-            "name": "Boolean Version",
-            "description": "Boolean is not an integer for this contract",
-            "route": "bool-version",
-            "icon": "X",
-            "status": "stable",
-            "backend": None,
-        }
+    def test_registry_requires_session(self):
+        """Unauthenticated requests are rejected."""
+        client = app_module.app.test_client()  # fresh client, no session
+        res = client.get("/api/registry")
+        self.assertIn(res.status_code, (401, 302))
 
-        res = self.client.post("/api/registry/register", json=manifest)
-        self.assertEqual(res.status_code, 400)
-        payload = res.get_json()
-        self.assertEqual(payload["error"], "invalid_manifest")
-        self.assertIn("manifestVersion", payload["fieldErrors"])
 
-    def test_register_rejects_invalid_manifest_fields(self):
-        manifest = {
-            "manifestVersion": 1,
-            "id": "",
-            "name": "Bad App",
-            "description": "invalid fields",
-            "route": "bad-app",
-            "icon": "X",
-            "status": "broken",
-            "backend": {"pathPrefix": ""},
-            "scriptUrl": "/apps/bad-app/element/main.js",
-        }
+class AvailabilityCheckTests(unittest.TestCase):
+    """Unit tests for _available() — verifies HTTP liveness logic."""
 
-        res = self.client.post("/api/registry/register", json=manifest)
-        self.assertEqual(res.status_code, 400)
-        payload = res.get_json()
-        self.assertEqual(payload["error"], "invalid_manifest")
-        self.assertIn("id", payload["fieldErrors"])
-        self.assertIn("status", payload["fieldErrors"])
-        self.assertIn("backend.pathPrefix", payload["fieldErrors"])
-        self.assertIn("frontend", payload["fieldErrors"])
+    def _make_row(self, manifest, app_url):
+        return {"manifest_json": __import__("json").dumps(manifest), "app_url": app_url}
 
-    def test_register_rejects_non_string_status(self):
-        manifest = {
-            "manifestVersion": 1,
-            "id": "status-not-string",
-            "name": "Status Not String",
-            "description": "Status should fail if not string",
-            "route": "status-not-string",
-            "icon": "X",
-            "status": [],
-            "backend": None,
-        }
+    def test_available_includes_reachable_app(self):
+        rows = [self._make_row(_EXAM_MANIFEST, "http://exam-corrector-backend:5000")]
+        ok_response = MagicMock(status_code=200)
+        with (
+            patch.object(app_module, "_db") as mock_db,
+            patch("app.http_requests.get", return_value=ok_response),
+        ):
+            mock_conn = MagicMock()
+            mock_conn.__enter__ = lambda s: mock_conn
+            mock_conn.__exit__ = MagicMock(return_value=False)
+            mock_conn.execute.return_value.fetchall.return_value = rows
+            mock_db.return_value = mock_conn
 
-        res = self.client.post("/api/registry/register", json=manifest)
-        self.assertEqual(res.status_code, 400)
-        payload = res.get_json()
-        self.assertEqual(payload["error"], "invalid_manifest")
-        self.assertIn("status", payload["fieldErrors"])
+            result = app_module._available("default")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["id"], "exam-corrector")
+
+    def test_available_excludes_unreachable_app(self):
+        rows = [self._make_row(_EXAM_MANIFEST, "http://exam-corrector-backend:5000")]
+        with (
+            patch.object(app_module, "_db") as mock_db,
+            patch("app.http_requests.get", side_effect=ConnectionError("refused")),
+        ):
+            mock_conn = MagicMock()
+            mock_conn.__enter__ = lambda s: mock_conn
+            mock_conn.__exit__ = MagicMock(return_value=False)
+            mock_conn.execute.return_value.fetchall.return_value = rows
+            mock_db.return_value = mock_conn
+
+            result = app_module._available("default")
+
+        self.assertEqual(result, [])
+
+    def test_available_always_includes_app_without_url(self):
+        rows = [self._make_row(_STATIC_MANIFEST, None)]
+        with patch.object(app_module, "_db") as mock_db:
+            mock_conn = MagicMock()
+            mock_conn.__enter__ = lambda s: mock_conn
+            mock_conn.__exit__ = MagicMock(return_value=False)
+            mock_conn.execute.return_value.fetchall.return_value = rows
+            mock_db.return_value = mock_conn
+
+            result = app_module._available("default")
+
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["id"], "attendance-checker")
 
 
 if __name__ == "__main__":

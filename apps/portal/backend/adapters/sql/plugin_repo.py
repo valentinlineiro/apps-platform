@@ -1,20 +1,18 @@
 import json
-import time
 
 from domain.plugin import CatalogEntry, PluginInstall
 
 
 class SqlPluginRepository:
-    def __init__(self, db_factory, heartbeat_ttl: int = 60):
+    def __init__(self, db_factory):
         self._db = db_factory
-        self._heartbeat_ttl = heartbeat_ttl
 
     def list_installs(self, tenant_id: str) -> list[PluginInstall]:
         with self._db() as conn:
             rows = conn.execute(
                 """
                 SELECT pi.plugin_id, pi.status, pi.installed_at, pi.installed_by,
-                       r.manifest_json, r.last_heartbeat
+                       r.manifest_json
                 FROM plugin_installs pi
                 LEFT JOIN registry r ON r.id = pi.plugin_id
                 WHERE pi.tenant_id = ?
@@ -22,17 +20,13 @@ class SqlPluginRepository:
                 """,
                 (tenant_id,),
             ).fetchall()
-        cutoff = time.time() - self._heartbeat_ttl
         return [
             PluginInstall(
                 plugin_id=row["plugin_id"],
                 status=row["status"],
                 installed_at=row["installed_at"],
                 installed_by=row["installed_by"],
-                alive=(
-                    row["last_heartbeat"] is not None
-                    and row["last_heartbeat"] >= cutoff
-                ),
+                alive=True,
                 manifest=json.loads(row["manifest_json"]) if row["manifest_json"] else {},
             )
             for row in rows

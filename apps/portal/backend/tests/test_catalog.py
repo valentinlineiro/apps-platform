@@ -1,218 +1,171 @@
-import importlib
+"""Catalog and install management HTTP route tests.
+
+These tests mock the application (use-case) layer and verify HTTP behaviour:
+auth enforcement, status codes, and response schema. SQL repo logic is an
+integration concern that requires DATABASE_URL — run docker compose for that.
+"""
 import json
 import os
-import sqlite3
 import sys
-import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-_MANIFEST_A = {
-    "manifestVersion": 1,
-    "id": "exam-corrector",
-    "name": "Exam Corrector",
-    "description": "Corrección automática de exámenes",
-    "route": "exam-corrector",
-    "icon": "📝",
-    "status": "stable",
-    "scriptUrl": "/apps/exam-corrector/element/main.js",
-    "elementTag": "exam-corrector-app",
-    "backend": {"pathPrefix": "/exam-corrector/"},
-}
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 
-_MANIFEST_B = {
-    "manifestVersion": 1,
-    "id": "second-app",
-    "name": "Second App",
-    "description": "Another tool",
-    "route": "second-app",
-    "icon": "🔧",
-    "status": "stable",
-    "scriptUrl": "/apps/second-app/element/main.js",
-    "elementTag": "second-app-app",
-    "backend": {"pathPrefix": "/second-app/"},
-}
+_psycopg2_mock = MagicMock()
+sys.modules.setdefault("psycopg2", _psycopg2_mock)
+sys.modules.setdefault("psycopg2.extras", _psycopg2_mock.extras)
+
+import app as app_module  # noqa: E402
+import application.catalog as uc  # noqa: E402
+from domain.plugin import CatalogEntry, PluginInstall  # noqa: E402
+
+_EXAM_ENTRY = CatalogEntry(
+    plugin_id="exam-corrector",
+    name="Exam Corrector",
+    description="Corrección automática",
+    icon="📝",
+    version="1.0.0",
+    installed=True,
+    install_status="active",
+    manifest={"id": "exam-corrector"},
+)
+
+_SECOND_ENTRY = CatalogEntry(
+    plugin_id="second-app",
+    name="Second App",
+    description="Another tool",
+    icon="🔧",
+    version="1.0.0",
+    installed=False,
+    install_status=None,
+    manifest={"id": "second-app"},
+)
+
+_EXAM_INSTALL = PluginInstall(
+    plugin_id="exam-corrector",
+    status="active",
+    installed_at=0.0,
+    installed_by=None,
+    alive=True,
+    manifest={"id": "exam-corrector"},
+)
 
 
-def _load_module(db_path: str):
-    os.environ["REGISTRY_DB_PATH"] = db_path
-    os.environ["PORTAL_SESSION_SECRET"] = "test-secret"
-    os.environ.pop("DATABASE_URL", None)
-    empty_static = str(Path(db_path).parent / "empty_static.json")
-    with open(empty_static, "w") as f:
-        f.write("[]")
-    os.environ["STATIC_APPS_FILE"] = empty_static
-    mod = importlib.import_module("app")
-    return importlib.reload(mod)
-
-
-def _client(mod, user_id: str | None = None):
-    c = mod.app.test_client()
-    if user_id:
-        with c.session_transaction() as sess:
-            sess["user_id"] = user_id
+def _authed_client(user_id="oidc:test-user"):
+    c = app_module.app.test_client()
+    with c.session_transaction() as sess:
+        sess["user_id"] = user_id
     return c
 
 
-def _make_owner(mod, email="owner@example.com"):
-    uid = mod._upsert_user(email, "Owner", "oidc", f"sub-{email}")
-    conn = sqlite3.connect(os.environ["REGISTRY_DB_PATH"])
-    conn.execute(
-        "UPDATE tenant_memberships SET role='owner' WHERE tenant_id='default' AND user_id=?",
-        (uid,),
-    )
-    conn.commit()
-    conn.close()
-    return uid
-
-
-class PluginSyncTests(unittest.TestCase):
-    """plugins + plugin_versions tables are populated on register."""
-
+class CatalogRouteTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.mod = _load_module(str(Path(self.tmp.name) / "portal.sqlite3"))
-
-    def tearDown(self):
-        self.tmp.cleanup()
-        for k in ("REGISTRY_DB_PATH", "PORTAL_SESSION_SECRET", "STATIC_APPS_FILE", "DATABASE_URL"):
-            os.environ.pop(k, None)
-
-    def _register(self, manifest=_MANIFEST_A):
-        return _client(self.mod).post("/api/registry/register", json=manifest)
-
-    def test_register_creates_plugin_record(self):
-        self._register()
-        conn = sqlite3.connect(os.environ["REGISTRY_DB_PATH"])
-        row = conn.execute("SELECT id, name, icon FROM plugins WHERE id='exam-corrector'").fetchone()
-        conn.close()
-        self.assertIsNotNone(row)
-        self.assertEqual(row[1], "Exam Corrector")
-        self.assertEqual(row[2], "📝")
-
-    def test_register_creates_plugin_version(self):
-        self._register()
-        conn = sqlite3.connect(os.environ["REGISTRY_DB_PATH"])
-        row = conn.execute(
-            "SELECT version, status FROM plugin_versions WHERE plugin_id='exam-corrector'"
-        ).fetchone()
-        conn.close()
-        self.assertIsNotNone(row)
-        self.assertEqual(row[0], "1.0.0")
-        self.assertEqual(row[1], "published")
-
-    def test_register_updates_plugin_on_re_register(self):
-        self._register()
-        updated = {**_MANIFEST_A, "name": "Exam Corrector Updated", "icon": "✏️"}
-        self._register(updated)
-        conn = sqlite3.connect(os.environ["REGISTRY_DB_PATH"])
-        row = conn.execute("SELECT name, icon FROM plugins WHERE id='exam-corrector'").fetchone()
-        conn.close()
-        self.assertEqual(row[0], "Exam Corrector Updated")
-        self.assertEqual(row[1], "✏️")
-
-    def test_static_apps_sync_populates_plugins(self):
-        db_path = str(Path(self.tmp.name) / "portal2.sqlite3")
-        static_path = str(Path(self.tmp.name) / "static.json")
-        with open(static_path, "w") as f:
-            json.dump([_MANIFEST_A], f)
-        os.environ["STATIC_APPS_FILE"] = static_path
-        os.environ["REGISTRY_DB_PATH"] = db_path
-        mod = importlib.reload(importlib.import_module("app"))
-        conn = sqlite3.connect(db_path)
-        row = conn.execute("SELECT id FROM plugins WHERE id='exam-corrector'").fetchone()
-        conn.close()
-        self.assertIsNotNone(row)
-
-
-class CatalogEndpointTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.mod = _load_module(str(Path(self.tmp.name) / "portal.sqlite3"))
-        self.owner_id = _make_owner(self.mod)
-        self.member_id = self.mod._upsert_user("m@example.com", "M", "oidc", "sub-m")
-        _client(self.mod).post("/api/registry/register", json=_MANIFEST_A)
-        _client(self.mod).post("/api/registry/register", json=_MANIFEST_B)
-
-    def tearDown(self):
-        self.tmp.cleanup()
-        for k in ("REGISTRY_DB_PATH", "PORTAL_SESSION_SECRET", "STATIC_APPS_FILE", "DATABASE_URL"):
-            os.environ.pop(k, None)
-
-    def _owner(self):
-        return _client(self.mod, self.owner_id)
-
-    def _member(self):
-        return _client(self.mod, self.member_id)
+        self.client = _authed_client()
 
     def test_catalog_requires_auth(self):
-        res = _client(self.mod).get("/api/catalog")
+        res = app_module.app.test_client().get("/api/catalog")
         self.assertEqual(res.status_code, 401)
 
-    def test_catalog_returns_all_plugins(self):
-        res = self._member().get("/api/catalog")
+    def test_catalog_returns_entries(self):
+        with patch.object(uc, "get_catalog", return_value=[_EXAM_ENTRY, _SECOND_ENTRY]):
+            res = self.client.get("/api/catalog")
         self.assertEqual(res.status_code, 200)
-        data = json.loads(res.data)
+        data = res.get_json()
         ids = {e["plugin_id"] for e in data}
         self.assertIn("exam-corrector", ids)
         self.assertIn("second-app", ids)
 
-    def test_catalog_includes_installed_flag(self):
-        res = self._member().get("/api/catalog")
-        data = json.loads(res.data)
-        # Both are auto-installed on register
-        for entry in data:
-            self.assertIn("installed", entry)
-            self.assertTrue(entry["installed"])
-
-    def test_catalog_shows_uninstalled_after_removal(self):
-        # Uninstall second-app
-        self._owner().delete("/api/tenants/default/installs/second-app")
-        res = self._member().get("/api/catalog")
-        data = json.loads(res.data)
-        by_id = {e["plugin_id"]: e for e in data}
-        self.assertFalse(by_id["second-app"]["installed"])
-        self.assertTrue(by_id["exam-corrector"]["installed"])
-
     def test_catalog_entry_has_expected_fields(self):
-        res = self._member().get("/api/catalog")
-        data = json.loads(res.data)
-        entry = next(e for e in data if e["plugin_id"] == "exam-corrector")
+        with patch.object(uc, "get_catalog", return_value=[_EXAM_ENTRY]):
+            res = self.client.get("/api/catalog")
+        entry = res.get_json()[0]
         for field in ("plugin_id", "name", "description", "icon", "version", "installed", "manifest"):
             self.assertIn(field, entry, f"missing field: {field}")
-        self.assertEqual(entry["name"], "Exam Corrector")
-        self.assertEqual(entry["icon"], "📝")
-        self.assertEqual(entry["version"], "1.0.0")
 
-    def test_install_from_catalog_then_appears_installed(self):
-        # Uninstall then re-install via catalog endpoint
-        self._owner().delete("/api/tenants/default/installs/second-app")
-        res = self._owner().post(
-            "/api/tenants/default/installs",
-            data=json.dumps({"plugin_id": "second-app"}),
-            content_type="application/json",
-        )
-        self.assertEqual(res.status_code, 200)
-        catalog = json.loads(self._member().get("/api/catalog").data)
-        entry = next(e for e in catalog if e["plugin_id"] == "second-app")
-        self.assertTrue(entry["installed"])
+    def test_catalog_installed_flag(self):
+        with patch.object(uc, "get_catalog", return_value=[_EXAM_ENTRY, _SECOND_ENTRY]):
+            res = self.client.get("/api/catalog")
+        by_id = {e["plugin_id"]: e for e in res.get_json()}
+        self.assertTrue(by_id["exam-corrector"]["installed"])
+        self.assertFalse(by_id["second-app"]["installed"])
 
-    def test_catalog_returns_empty_for_user_with_no_tenant(self):
-        orphan_id = self.mod._upsert_user("orphan@x.com", "Orphan", "oidc", "sub-orphan")
-        conn = sqlite3.connect(os.environ["REGISTRY_DB_PATH"])
-        conn.execute(
-            "DELETE FROM tenant_memberships WHERE tenant_id='default' AND user_id=?",
-            (orphan_id,),
-        )
-        conn.commit()
-        conn.close()
-        res = _client(self.mod, orphan_id).get("/api/catalog")
+
+class InstallRouteTests(unittest.TestCase):
+    def setUp(self):
+        self.client = _authed_client()
+
+    def test_list_installs_requires_auth(self):
+        res = app_module.app.test_client().get("/api/tenants/default/installs")
+        self.assertEqual(res.status_code, 401)
+
+    def test_list_installs_returns_list(self):
+        with patch.object(uc, "list_installs", return_value=[_EXAM_INSTALL]):
+            res = self.client.get("/api/tenants/default/installs")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(json.loads(res.data), [])
+        data = res.get_json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["plugin_id"], "exam-corrector")
+        self.assertEqual(data[0]["status"], "active")
+        self.assertTrue(data[0]["alive"])
+
+    def test_install_plugin_success(self):
+        with patch.object(uc, "install_plugin", return_value=None):
+            res = self.client.post(
+                "/api/tenants/default/installs",
+                data=json.dumps({"plugin_id": "exam-corrector"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+
+    def test_install_unknown_plugin_returns_404(self):
+        from domain.errors import NotFoundError
+        with patch.object(uc, "install_plugin", side_effect=NotFoundError("plugin not found")):
+            res = self.client.post(
+                "/api/tenants/default/installs",
+                data=json.dumps({"plugin_id": "nonexistent"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 404)
+
+    def test_patch_status_success(self):
+        with patch.object(uc, "update_install_status", return_value=None):
+            res = self.client.patch(
+                "/api/tenants/default/installs/exam-corrector",
+                data=json.dumps({"status": "suspended"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+
+    def test_patch_invalid_status_returns_400(self):
+        from domain.errors import ValidationError
+        with patch.object(uc, "update_install_status", side_effect=ValidationError("bad status")):
+            res = self.client.patch(
+                "/api/tenants/default/installs/exam-corrector",
+                data=json.dumps({"status": "broken"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 400)
+
+    def test_uninstall_success(self):
+        with patch.object(uc, "uninstall_plugin", return_value=None):
+            res = self.client.delete("/api/tenants/default/installs/exam-corrector")
+        self.assertEqual(res.status_code, 200)
+
+    def test_member_forbidden_to_install(self):
+        from domain.errors import ForbiddenError
+        with patch.object(uc, "install_plugin", side_effect=ForbiddenError("admin only")):
+            res = self.client.post(
+                "/api/tenants/default/installs",
+                data=json.dumps({"plugin_id": "exam-corrector"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 403)
 
 
 if __name__ == "__main__":

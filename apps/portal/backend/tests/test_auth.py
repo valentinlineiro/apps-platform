@@ -1,48 +1,53 @@
-import importlib
 import os
-import sqlite3
 import sys
-import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
+os.environ.setdefault("PORTAL_SESSION_SECRET", "test-secret")
+os.environ.setdefault("OAUTH_CLIENT_ID", "client-id")
+os.environ.setdefault("OAUTH_CLIENT_SECRET", "client-secret")
+os.environ.setdefault("OAUTH_AUTHORIZE_URL", "https://idp.example.com/authorize")
+os.environ.setdefault("OAUTH_TOKEN_URL", "https://idp.example.com/token")
+os.environ.setdefault("OAUTH_USERINFO_URL", "https://idp.example.com/userinfo")
+os.environ.setdefault("OAUTH_REDIRECT_URI", "http://localhost:5000/auth/callback")
+os.environ.setdefault("OAUTH_PROVIDER", "oidc")
+
+_psycopg2_mock = MagicMock()
+sys.modules.setdefault("psycopg2", _psycopg2_mock)
+sys.modules.setdefault("psycopg2.extras", _psycopg2_mock.extras)
+
+import app as app_module  # noqa: E402
+
+
+_OAUTH_PATCHES = {
+    "OAUTH_CLIENT_ID": "client-id",
+    "OAUTH_CLIENT_SECRET": "client-secret",
+    "OAUTH_AUTHORIZE_URL": "https://idp.example.com/authorize",
+    "OAUTH_TOKEN_URL": "https://idp.example.com/token",
+    "OAUTH_USERINFO_URL": "https://idp.example.com/userinfo",
+    "OAUTH_REDIRECT_URI": "http://localhost:5000/auth/callback",
+    "OAUTH_PROVIDER": "oidc",
+}
+
 
 class AuthApiTests(unittest.TestCase):
     def setUp(self):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.db_path = str(Path(self.temp_dir.name) / "registry.sqlite3")
-        os.environ["REGISTRY_DB_PATH"] = self.db_path
-        os.environ["PORTAL_SESSION_SECRET"] = "test-secret"
-        os.environ["OAUTH_CLIENT_ID"] = "client-id"
-        os.environ["OAUTH_CLIENT_SECRET"] = "client-secret"
-        os.environ["OAUTH_AUTHORIZE_URL"] = "https://idp.example.com/authorize"
-        os.environ["OAUTH_TOKEN_URL"] = "https://idp.example.com/token"
-        os.environ["OAUTH_USERINFO_URL"] = "https://idp.example.com/userinfo"
-        os.environ["OAUTH_REDIRECT_URI"] = "http://localhost:5000/auth/callback"
-        os.environ["OAUTH_PROVIDER"] = "oidc"
-        self.app_module = importlib.import_module("app")
-        self.app_module = importlib.reload(self.app_module)
-        self.client = self.app_module.app.test_client()
+        self.patches = [
+            patch.object(app_module, k, v) for k, v in _OAUTH_PATCHES.items()
+        ]
+        for p in self.patches:
+            p.start()
+        self.client = app_module.app.test_client()
 
     def tearDown(self):
-        self.temp_dir.cleanup()
-        for key in (
-            "REGISTRY_DB_PATH",
-            "PORTAL_SESSION_SECRET",
-            "OAUTH_CLIENT_ID",
-            "OAUTH_CLIENT_SECRET",
-            "OAUTH_AUTHORIZE_URL",
-            "OAUTH_TOKEN_URL",
-            "OAUTH_USERINFO_URL",
-            "OAUTH_REDIRECT_URI",
-            "OAUTH_PROVIDER",
-        ):
-            os.environ.pop(key, None)
+        for p in self.patches:
+            p.stop()
 
     def test_auth_login_redirects_to_provider(self):
         res = self.client.get("/auth/login")
@@ -55,53 +60,60 @@ class AuthApiTests(unittest.TestCase):
     def test_auth_callback_invalid_state(self):
         with self.client.session_transaction() as sess:
             sess["oauth_state"] = "expected"
-
         res = self.client.get("/auth/callback?code=abc&state=wrong")
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.get_json()["error"], "invalid_state")
 
-    def test_auth_callback_creates_session_and_user(self):
+    def test_auth_callback_creates_session(self):
         with self.client.session_transaction() as sess:
             sess["oauth_state"] = "state-123"
             sess["oauth_next"] = "/"
+            sess["oauth_code_verifier"] = "test-verifier"
 
-        token_res = Mock()
-        token_res.ok = True
+        token_res = Mock(ok=True)
         token_res.json.return_value = {"access_token": "token123"}
 
-        userinfo_res = Mock()
-        userinfo_res.ok = True
+        userinfo_res = Mock(ok=True)
         userinfo_res.json.return_value = {
             "sub": "abc123",
             "email": "dev@example.com",
             "name": "Dev User",
         }
 
-        with patch.object(self.app_module.http_requests, "post", return_value=token_res), patch.object(
-            self.app_module.http_requests,
-            "get",
-            return_value=userinfo_res,
+        with (
+            patch.object(app_module.http_requests, "post", return_value=token_res),
+            patch.object(app_module.http_requests, "get", return_value=userinfo_res),
+            patch.object(app_module, "_upsert_user", return_value="oidc:abc123"),
+            patch.object(app_module, "_get_tenant_membership", return_value={"id": "default", "role": "member"}),
         ):
             res = self.client.get("/auth/callback?code=ok-code&state=state-123")
 
         self.assertEqual(res.status_code, 302)
         self.assertEqual(res.headers.get("Location"), "/")
 
-        me = self.client.get("/auth/me")
-        self.assertEqual(me.status_code, 200)
-        payload = me.get_json()
-        self.assertEqual(payload["email"], "dev@example.com")
-        self.assertIn("member", payload["roles"])
-
-        with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute("SELECT id, email FROM users WHERE provider_sub = ?", ("abc123",)).fetchone()
-        self.assertIsNotNone(row)
-        self.assertEqual(row[1], "dev@example.com")
-
     def test_auth_me_requires_login(self):
         res = self.client.get("/auth/me")
         self.assertEqual(res.status_code, 401)
         self.assertEqual(res.get_json()["error"], "unauthorized")
+
+    def test_auth_me_returns_user(self):
+        with self.client.session_transaction() as sess:
+            sess["user_id"] = "oidc:test-user"
+
+        mock_me = {
+            "id": "oidc:test-user",
+            "email": "dev@example.com",
+            "name": "Dev User",
+            "roles": ["member"],
+            "tenant": {"id": "default", "name": "Default"},
+        }
+
+        with patch.object(app_module, "_get_current_user", return_value=mock_me):
+            res = self.client.get("/auth/me")
+
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["email"], "dev@example.com")
 
 
 if __name__ == "__main__":

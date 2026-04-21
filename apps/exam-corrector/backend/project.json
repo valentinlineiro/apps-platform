@@ -5,19 +5,19 @@
   "sourceRoot": "apps/exam-corrector/backend",
   "targets": {
     "setup": {
-      "command": "pip install -r requirements.txt",
+      "command": "python3 -m venv .venv && .venv/bin/python3 -m pip install -r requirements.txt",
       "options": {
         "cwd": "apps/exam-corrector/backend"
       }
     },
     "run": {
-      "command": "python app.py",
+      "command": ".venv/bin/python3 app.py",
       "options": {
         "cwd": "apps/exam-corrector/backend"
       }
     },
     "test": {
-      "command": "python -m pytest tests/",
+      "command": ".venv/bin/python3 -m pytest tests/",
       "options": {
         "cwd": "apps/exam-corrector/backend"
       }

@@ -1,7 +1,7 @@
+import concurrent.futures
 import os
 import json
 import secrets
-import sqlite3
 import time
 import base64
 import hashlib
@@ -35,20 +35,13 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 
-HEARTBEAT_TTL = int(os.environ.get("HEARTBEAT_TTL", "60"))
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-REGISTRY_DB_PATH = os.environ.get("REGISTRY_DB_PATH", "/tmp/portal_registry.sqlite3")
 STATIC_APPS_FILE = os.environ.get(
     "STATIC_APPS_FILE",
     os.path.join(os.path.dirname(__file__), "static_apps.json"),
 )
-_PINNED_HEARTBEAT = 9_999_999_999.0  # year 2286 — static apps never expire
 DEFAULT_TENANT_ID = "default"
 DEFAULT_TENANT_NAME = "Default"
-
-# Schema tokens that differ between Postgres and SQLite
-_AUTO_PK = "SERIAL PRIMARY KEY" if DATABASE_URL else "INTEGER PRIMARY KEY AUTOINCREMENT"
-_FLOAT = "DOUBLE PRECISION" if DATABASE_URL else "REAL"
 SUPPORTED_MANIFEST_VERSIONS = {1}
 ALLOWED_STATUSES = {"stable", "wip", "disabled"}
 DEFAULT_ROLE = "member"
@@ -96,12 +89,8 @@ class _PgConn:
 
 
 def _db():
-    if DATABASE_URL:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-        return _PgConn(conn)
-    conn = sqlite3.connect(REGISTRY_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    return _PgConn(conn)
 
 
 def _ensure_db_exists() -> None:
@@ -131,32 +120,32 @@ def _init_db() -> None:
     with _db() as conn:
         try:
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS registry (
-                    id TEXT PRIMARY KEY,
+                    id            TEXT PRIMARY KEY,
                     manifest_json TEXT NOT NULL,
-                    last_heartbeat {_FLOAT} NOT NULL
+                    app_url       TEXT
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
-                    email TEXT NOT NULL UNIQUE,
-                    name TEXT NOT NULL,
-                    provider TEXT NOT NULL,
+                    id           TEXT PRIMARY KEY,
+                    email        TEXT NOT NULL UNIQUE,
+                    name         TEXT NOT NULL,
+                    provider     TEXT NOT NULL,
                     provider_sub TEXT NOT NULL,
-                    created_at {_FLOAT} NOT NULL,
-                    updated_at {_FLOAT} NOT NULL,
+                    created_at   DOUBLE PRECISION NOT NULL,
+                    updated_at   DOUBLE PRECISION NOT NULL,
                     UNIQUE(provider, provider_sub)
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS roles (
-                    id {_AUTO_PK},
+                    id   SERIAL PRIMARY KEY,
                     name TEXT NOT NULL UNIQUE
                 )
                 """
@@ -164,7 +153,7 @@ def _init_db() -> None:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_roles (
-                    user_id TEXT NOT NULL,
+                    user_id TEXT    NOT NULL,
                     role_id INTEGER NOT NULL,
                     PRIMARY KEY(user_id, role_id),
                     FOREIGN KEY(user_id) REFERENCES users(id),
@@ -173,104 +162,104 @@ def _init_db() -> None:
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS apps (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
+                    id         TEXT PRIMARY KEY,
+                    name       TEXT NOT NULL,
                     visibility TEXT NOT NULL DEFAULT 'internal',
-                    status TEXT NOT NULL DEFAULT 'stable',
-                    created_at {_FLOAT} NOT NULL,
-                    updated_at {_FLOAT} NOT NULL
+                    status     TEXT NOT NULL DEFAULT 'stable',
+                    created_at DOUBLE PRECISION NOT NULL,
+                    updated_at DOUBLE PRECISION NOT NULL
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS app_permissions (
-                    id {_AUTO_PK},
-                    app_id TEXT NOT NULL,
+                    id           SERIAL PRIMARY KEY,
+                    app_id       TEXT NOT NULL,
                     subject_type TEXT NOT NULL,
-                    subject_id TEXT NOT NULL,
-                    permission TEXT NOT NULL,
-                    created_at {_FLOAT} NOT NULL,
+                    subject_id   TEXT NOT NULL,
+                    permission   TEXT NOT NULL,
+                    created_at   DOUBLE PRECISION NOT NULL,
                     UNIQUE(app_id, subject_type, subject_id, permission)
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS audit_logs (
-                    id {_AUTO_PK},
-                    user_id TEXT,
-                    action TEXT NOT NULL,
-                    target_type TEXT,
-                    target_id TEXT,
+                    id            SERIAL PRIMARY KEY,
+                    user_id       TEXT,
+                    action        TEXT NOT NULL,
+                    target_type   TEXT,
+                    target_id     TEXT,
                     metadata_json TEXT NOT NULL,
-                    created_at {_FLOAT} NOT NULL
+                    created_at    DOUBLE PRECISION NOT NULL
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS tenants (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    created_at {_FLOAT} NOT NULL,
-                    updated_at {_FLOAT} NOT NULL
+                    id         TEXT PRIMARY KEY,
+                    name       TEXT NOT NULL,
+                    created_at DOUBLE PRECISION NOT NULL,
+                    updated_at DOUBLE PRECISION NOT NULL
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS tenant_memberships (
-                    id {_AUTO_PK},
+                    id        SERIAL PRIMARY KEY,
                     tenant_id TEXT NOT NULL,
-                    user_id TEXT NOT NULL,
-                    role TEXT NOT NULL DEFAULT 'member',
-                    created_at {_FLOAT} NOT NULL,
+                    user_id   TEXT NOT NULL,
+                    role      TEXT NOT NULL DEFAULT 'member',
+                    created_at DOUBLE PRECISION NOT NULL,
                     UNIQUE(tenant_id, user_id),
                     FOREIGN KEY(tenant_id) REFERENCES tenants(id),
-                    FOREIGN KEY(user_id) REFERENCES users(id)
+                    FOREIGN KEY(user_id)   REFERENCES users(id)
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS plugin_installs (
-                    id {_AUTO_PK},
-                    tenant_id TEXT NOT NULL,
-                    plugin_id TEXT NOT NULL,
-                    installed_at {_FLOAT} NOT NULL,
+                    id           SERIAL PRIMARY KEY,
+                    tenant_id    TEXT NOT NULL,
+                    plugin_id    TEXT NOT NULL,
+                    installed_at DOUBLE PRECISION NOT NULL,
                     installed_by TEXT,
-                    status TEXT NOT NULL DEFAULT 'active',
+                    status       TEXT NOT NULL DEFAULT 'active',
                     UNIQUE(tenant_id, plugin_id),
                     FOREIGN KEY(tenant_id) REFERENCES tenants(id)
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS plugins (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
+                    id          TEXT PRIMARY KEY,
+                    name        TEXT NOT NULL,
                     description TEXT NOT NULL DEFAULT '',
-                    icon TEXT NOT NULL DEFAULT '📦',
-                    visibility TEXT NOT NULL DEFAULT 'internal',
-                    created_at {_FLOAT} NOT NULL,
-                    updated_at {_FLOAT} NOT NULL
+                    icon        TEXT NOT NULL DEFAULT '📦',
+                    visibility  TEXT NOT NULL DEFAULT 'internal',
+                    created_at  DOUBLE PRECISION NOT NULL,
+                    updated_at  DOUBLE PRECISION NOT NULL
                 )
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS plugin_versions (
-                    id {_AUTO_PK},
-                    plugin_id TEXT NOT NULL,
-                    version TEXT NOT NULL DEFAULT '1.0.0',
+                    id           SERIAL PRIMARY KEY,
+                    plugin_id    TEXT NOT NULL,
+                    version      TEXT NOT NULL DEFAULT '1.0.0',
                     manifest_json TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'published',
-                    published_at {_FLOAT} NOT NULL,
-                    created_at {_FLOAT} NOT NULL,
+                    status       TEXT NOT NULL DEFAULT 'published',
+                    published_at DOUBLE PRECISION NOT NULL,
+                    created_at   DOUBLE PRECISION NOT NULL,
                     UNIQUE(plugin_id, version),
                     FOREIGN KEY(plugin_id) REFERENCES plugins(id)
                 )
@@ -279,7 +268,7 @@ def _init_db() -> None:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_preferences (
-                    user_id             TEXT PRIMARY KEY REFERENCES users(id),
+                    user_id             TEXT    PRIMARY KEY REFERENCES users(id),
                     theme               TEXT    NOT NULL DEFAULT 'dark',
                     language            TEXT    NOT NULL DEFAULT 'es',
                     timezone            TEXT    NOT NULL DEFAULT 'UTC',
@@ -293,10 +282,10 @@ def _init_db() -> None:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_profiles (
-                    user_id      TEXT PRIMARY KEY REFERENCES users(id),
-                    avatar_url   TEXT,
-                    bio          TEXT,
-                    display_name TEXT,
+                    user_id       TEXT    PRIMARY KEY REFERENCES users(id),
+                    avatar_url    TEXT,
+                    bio           TEXT,
+                    display_name  TEXT,
                     show_activity INTEGER NOT NULL DEFAULT 1,
                     show_email    INTEGER NOT NULL DEFAULT 0
                 )
@@ -314,11 +303,11 @@ def _init_db() -> None:
                 """
             )
             conn.execute(
-                f"""
+                """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     version     INTEGER PRIMARY KEY,
                     description TEXT    NOT NULL,
-                    applied_at  {_FLOAT} NOT NULL
+                    applied_at  DOUBLE PRECISION NOT NULL
                 )
                 """
             )
@@ -336,17 +325,7 @@ def _init_db() -> None:
 
 
 def _add_column_safe(conn, table: str, column: str, definition: str) -> None:
-    """ADD COLUMN that is a no-op when the column already exists.
-
-    Postgres supports IF NOT EXISTS natively.
-    SQLite doesn't, so we check PRAGMA table_info first.
-    """
-    if DATABASE_URL:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
-    else:
-        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
-        if column not in existing:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+    conn.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
 
 
 # ---------------------------------------------------------------------------
@@ -365,8 +344,14 @@ def _m001_tenant_workspace_columns(conn) -> None:
     _add_column_safe(conn, "tenants", "notification_defaults", "TEXT NOT NULL DEFAULT '{}'")
 
 
+def _m002_registry_drop_heartbeat(conn) -> None:
+    _add_column_safe(conn, "registry", "app_url", "TEXT")
+    conn.execute("ALTER TABLE registry DROP COLUMN IF EXISTS last_heartbeat")
+
+
 _MIGRATIONS: list[tuple[int, str, object]] = [
     (1, "tenant workspace columns", _m001_tenant_workspace_columns),
+    (2, "registry drop heartbeat, add app_url", _m002_registry_drop_heartbeat),
 ]
 
 
@@ -456,44 +441,55 @@ def _init_static_apps() -> None:
     now = time.time()
     with _db() as conn:
         for manifest in manifests:
+            app_url = manifest.get("app_url")
             conn.execute(
                 """
-                INSERT INTO registry (id, manifest_json, last_heartbeat)
+                INSERT INTO registry (id, manifest_json, app_url)
                 VALUES (?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     manifest_json = excluded.manifest_json,
-                    last_heartbeat = excluded.last_heartbeat
+                    app_url = excluded.app_url
                 """,
-                (manifest["id"], json.dumps(manifest), _PINNED_HEARTBEAT),
+                (manifest["id"], json.dumps(manifest), app_url),
             )
             _sync_plugin_from_manifest(conn, manifest, now)
-            # Auto-install non-disabled static apps into the default tenant
             if manifest.get("status") != "disabled":
                 _install_plugin(conn, DEFAULT_TENANT_ID, manifest["id"])
 
 
-def _active(tenant_id: str) -> list[dict]:
-    """Return apps that are alive in the heartbeat store AND installed for the given tenant."""
-    cutoff = time.time() - HEARTBEAT_TTL
+def _available(tenant_id: str) -> list[dict]:
+    """Return installed apps for tenant that are currently reachable.
+
+    Apps without app_url (frontend-only) are always considered available.
+    Apps with app_url are checked via GET {app_url}/manifest with a short timeout.
+    """
     with _db() as conn:
         rows = conn.execute(
             """
-            SELECT r.manifest_json, r.last_heartbeat
+            SELECT r.manifest_json, r.app_url
             FROM registry r
             JOIN plugin_installs pi ON pi.plugin_id = r.id
-            WHERE r.last_heartbeat >= ?
-              AND pi.tenant_id = ?
-              AND pi.status = 'active'
+            WHERE pi.tenant_id = ? AND pi.status = 'active'
             """,
-            (cutoff, tenant_id),
+            (tenant_id,),
         ).fetchall()
 
-    active_apps: list[dict] = []
-    for row in rows:
-        manifest = json.loads(row["manifest_json"])
-        manifest["lastHeartbeat"] = row["last_heartbeat"]
-        active_apps.append(manifest)
-    return active_apps
+    def _is_reachable(app_url: str | None) -> bool:
+        if not app_url:
+            return True
+        try:
+            resp = http_requests.get(f"{app_url}/manifest", timeout=1.5)
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    available_apps: list[dict] = []
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = {executor.submit(_is_reachable, row["app_url"]): row for row in rows}
+        for future, row in futures.items():
+            if future.result():
+                available_apps.append(json.loads(row["manifest_json"]))
+    return available_apps
 
 
 def _is_non_empty_string(value: object) -> bool:
@@ -716,59 +712,7 @@ def get_registry():
     membership = _get_tenant_membership(session["user_id"])
     if not membership:
         return jsonify([])
-    return jsonify(_active(membership["id"]))
-
-
-@app.post("/api/registry/register")
-def register():
-    data = request.get_json(force=True)
-    manifest, field_errors, unsupported_version = _validate_manifest(data)
-    if unsupported_version is not None:
-        return jsonify(
-            {
-                "error": "unsupported_manifest_version",
-                "manifestVersion": unsupported_version,
-                "supportedVersions": sorted(SUPPORTED_MANIFEST_VERSIONS),
-            }
-        ), 422
-    if field_errors:
-        return jsonify({"error": "invalid_manifest", "fieldErrors": field_errors}), 400
-    now = time.time()
-    with _db() as conn:
-        conn.execute(
-            """
-            INSERT INTO registry (id, manifest_json, last_heartbeat)
-            VALUES (?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                manifest_json = excluded.manifest_json,
-                last_heartbeat = excluded.last_heartbeat
-            """,
-            (manifest["id"], json.dumps(manifest), now),
-        )
-        _sync_plugin_from_manifest(conn, manifest, now)
-        # Auto-install into default tenant on first registration
-        _install_plugin(conn, DEFAULT_TENANT_ID, manifest["id"])
-    return jsonify({"ok": True})
-
-
-@app.post("/api/registry/heartbeat/<app_id>")
-def heartbeat(app_id: str):
-    now = time.time()
-    with _db() as conn:
-        result = conn.execute(
-            "UPDATE registry SET last_heartbeat = ? WHERE id = ?",
-            (now, app_id),
-        )
-    if result.rowcount == 0:
-        return jsonify({"error": "not registered"}), 404
-    return jsonify({"ok": True})
-
-
-@app.delete("/api/registry/<app_id>")
-def unregister(app_id: str):
-    with _db() as conn:
-        conn.execute("DELETE FROM registry WHERE id = ?", (app_id,))
-    return jsonify({"ok": True})
+    return jsonify(_available(membership["id"]))
 
 
 
@@ -937,7 +881,7 @@ def _bootstrap():
     # Wire blueprints after DB is ready
     _user_repo = SqlUserRepository(_db)
     _tenant_repo = SqlTenantRepository(_db)
-    _plugin_repo = SqlPluginRepository(_db, heartbeat_ttl=HEARTBEAT_TTL)
+    _plugin_repo = SqlPluginRepository(_db)
     _audit_repo = SqlAuditRepository(_db)
     app.register_blueprint(create_profile_blueprint(_user_repo))
     app.register_blueprint(create_tenant_settings_blueprint(_tenant_repo, _audit_repo))
