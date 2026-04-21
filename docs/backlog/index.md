@@ -33,6 +33,7 @@ Consult this index to track project progress, identify active implementation tra
 | **T-003** | [**Implement Alembic Schema Migrations**](items/T-003%20-%20Implement%20Alembic%20Schema%20Migrations.md) | `Done` | `High` |
 | **T-004** | [**Distributed Manifest Discovery**](items/T-004%20-%20Distributed%20Manifest%20Discovery.md) | `Planned` | `Medium` |
 | **T-005** | [**Portal Backend Hardening**](items/T-005%20-%20Portal%20Backend%20Hardening.md) | `Active` | `High` |
+| **T-006** | [**E2E Tests with Playwright**](items/T-006%20-%20E2E%20Tests%20with%20Playwright.md) | `Planned` | `Medium` |
 
 
 ### 🎨 UX & UI Enhancements (Category U)
