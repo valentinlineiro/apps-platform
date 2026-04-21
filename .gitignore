@@ -1,4 +1,6 @@
 **/uploads/
+caddy-data/
+caddy-root.crt
 **/__pycache__/
 **/*.pyc
 .env
