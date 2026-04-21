@@ -2,7 +2,7 @@
 id: DOC-LOG-001
 title: Project Backlog Index
 audience: [human, ai]
-last_updated: 2026-04-21
+last_updated: 2026-04-21  
 tags: [backlog, index, roadmap]
 source_of_truth: true
 related: [DOC-TMP-AI-001, DOC-AI-TS-001]
@@ -29,9 +29,10 @@ Consult this index to track project progress, identify active implementation tra
 | ID | Initiative | Status | Priority |
 | :--- | :--- | :--- | :--- |
 | **T-001** | [**Replace Heartbeat Registry With Postgres App Catalog**](items/T-001%20-%20Replace%20Heartbeat%20Registry%20With%20Postgres%20App%20Catalog.md) | `Done` | `High` |
-| **T-002** | [**Platform Stabilization and Technical Debt**](items/T-002%20-%20Platform%20Stabilization%20and%20Technical%20Debt.md) | `Active` | `High` |
-| **T-003** | [**Implement Alembic Schema Migrations**](items/T-003%20-%20Implement%20Alembic%20Schema%20Migrations.md) | `Active` | `High` |
+| **T-002** | [**Platform Stabilization and Technical Debt**](items/T-002%20-%20Platform%20Stabilization%20and%20Technical%20Debt.md) | `Done` | `High` |
+| **T-003** | [**Implement Alembic Schema Migrations**](items/T-003%20-%20Implement%20Alembic%20Schema%20Migrations.md) | `Done` | `High` |
 | **T-004** | [**Distributed Manifest Discovery**](items/T-004%20-%20Distributed%20Manifest%20Discovery.md) | `Planned` | `Medium` |
+| **T-005** | [**Portal Backend Hardening**](items/T-005%20-%20Portal%20Backend%20Hardening.md) | `Active` | `High` |
 
 
 ### 🎨 UX & UI Enhancements (Category U)
@@ -42,4 +43,5 @@ Consult this index to track project progress, identify active implementation tra
 - [AI-Ready Task Template](templates/AI_TASK_TEMPLATE.md)
 
 ## Change log
+- **2026-04-21**: T-002 and T-003 marked Done; T-005 (Portal Backend Hardening) added as Active/High.
 - **2026-04-17**: Updated links to new `items/` directory and standardized section order.

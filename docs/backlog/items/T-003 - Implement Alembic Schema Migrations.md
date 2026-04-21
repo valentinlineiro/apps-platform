@@ -41,7 +41,7 @@ Currently, backends use a simple `_init_db()` function to create tables at start
 ---
 
 ### 🚦 Status
-- **Current Status**: `Active`
+- **Current Status**: `Done`
 - **Priority**: `High`
 - **Assignee**: Gemini CLI
 
@@ -50,6 +50,7 @@ Currently, backends use a simple `_init_db()` function to create tables at start
 - [Postgres Schema Initialization](../concepts/architecture.md)
 
 ## Change log
+- **2026-04-21**: Two follow-up migrations added to fix pre-existing schema gaps in the portal registry table (missing `app_url` column, `last_heartbeat NOT NULL` violated by static app inserts). All backends confirmed running with `alembic upgrade head` at startup.
 - **2026-04-21**: Fixed silent failure in exam-corrector: psycopg2-binary was missing so SQLAlchemy could not open a Postgres connection; added .dockerignore to prevent Python 3.12 venvs from being copied into Python 3.11 images.
 - **2026-04-21**: Initial implementation by Gemini CLI: Alembic initialized in all backends, per-service version tables, --preload gunicorn flag.
 - **2026-04-21**: Created to address critical schema evolution gaps.
