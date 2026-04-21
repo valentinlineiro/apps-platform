@@ -51,3 +51,7 @@ app.register_blueprint(manifest.bp)
 app.register_blueprint(batch.bp)
 app.register_blueprint(settings.bp)
 
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
+
