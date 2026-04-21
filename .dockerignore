@@ -1,0 +1,28 @@
+# Python virtual environments
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+
+# Node
+**/node_modules
+**/dist
+
+# Angular build output inside element apps (served via Flask static; not needed in context)
+apps/exam-corrector/backend/static/element
+apps/aneca-advisor/backend/static/element
+
+# Nx cache and tooling
+.nx/cache
+.nx/workspace-data
+
+# Test and coverage artifacts
+**/coverage
+**/.coverage
+
+# Editor / OS
+.git
+.DS_Store
+**/.env
