@@ -15,6 +15,12 @@
       "options": {
         "cwd": "apps/exam-corrector"
       }
+    },
+    "test": {
+      "command": "npm run test",
+      "options": {
+        "cwd": "apps/exam-corrector"
+      }
     }
   }
 }

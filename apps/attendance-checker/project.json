@@ -15,6 +15,12 @@
       "options": {
         "cwd": "apps/attendance-checker"
       }
+    },
+    "test": {
+      "command": "npm run test",
+      "options": {
+        "cwd": "apps/attendance-checker"
+      }
     }
   }
 }

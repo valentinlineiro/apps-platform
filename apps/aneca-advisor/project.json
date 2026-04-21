@@ -15,6 +15,12 @@
       "options": {
         "cwd": "apps/aneca-advisor"
       }
+    },
+    "test": {
+      "command": "npm run test",
+      "options": {
+        "cwd": "apps/aneca-advisor"
+      }
     }
   }
 }
