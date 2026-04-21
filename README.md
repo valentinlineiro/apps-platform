@@ -1,77 +1,122 @@
 # apps-platform
 
-Repositorio padre (orquestador) para el ecosistema de aplicaciones:
+Nx 22 monorepo for a multi-tenant app platform. Contains four Angular 21 applications, three Python Flask backends, and a shared Python SDK.
 
-- `portal`
-- `exam-corrector`
-- `attendance-checker`
+## Repository structure
 
-Este repo mantiene coordinación local y operativa compartida (compose, documentación y utilidades de transición).
-
-## Estado actual
-
-Las apps se gestionan como submódulos git bajo `apps/`.
-
-## Clonado
-
-```bash
-git clone --recurse-submodules <APPS_PLATFORM_REPO_URL>
+```
+apps-platform/
+├── apps/
+│   ├── portal/                  # Angular PWA + Flask backend
+│   ├── exam-corrector/          # Angular Element + Flask backend
+│   ├── aneca-advisor/           # Angular Element + Flask backend
+│   └── attendance-checker/      # Angular Element (frontend only)
+├── libs/
+│   └── apps-platform-sdk/       # Shared Python library
+├── docs/                        # Platform documentation
+├── docker-compose.yml           # Local development stack
+├── docker-compose.prod.yml      # Production stack
+├── Caddyfile                    # Reverse proxy config
+└── nx.json                      # Nx workspace config
 ```
 
-Si ya clonaste sin submódulos:
+## Projects
+
+| Nx project | Type | Dev URL |
+|---|---|---|
+| `portal` | Angular SPA + Flask backend | `https://localhost` (via Caddy) |
+| `exam-corrector` | Angular Element + Flask backend | internal only |
+| `aneca-advisor` | Angular Element + Flask backend | internal only |
+| `attendance-checker` | Angular Element | internal only |
+| `apps-platform-sdk` | Python library | — |
+
+### Service ports (docker compose)
+
+| Service | Internal port | Exposed externally |
+|---|---|---|
+| Caddy | 80 / 443 | `:80` / `:443` |
+| portal (nginx) | 80 | via Caddy |
+| portal-backend (Flask) | 5000 | internal only |
+| exam-corrector-backend | 8000 | internal only |
+| aneca-advisor-backend | 5001 | internal only |
+| Postgres | 5432 | internal only |
+| Keycloak | 8080 | `https://localhost/keycloak/` |
+
+## Prerequisites
+
+- Docker with Buildx
+- Node 20 (for local Angular development)
+- Python 3.11 (for local backend development)
+
+## Local startup
 
 ```bash
-git submodule update --init --recursive
-```
-
-Para traer últimos cambios de submódulos:
-
-```bash
-git submodule update --remote --merge
-```
-
-## Arrancar en local
-
-```bash
-export GEMINI_API_KEY="tu_api_key"
 docker compose up --build
 ```
 
-- Portal frontend: `http://localhost:4200`
-- Portal backend: `http://localhost:5000` (interno por compose)
-- Exam-corrector backend: `http://localhost:8000` (interno por compose)
-- Keycloak: `http://localhost:8081` (`admin` / `admin` por defecto)
+Access points after startup:
 
-## Login OIDC local (Keycloak)
+- **Portal**: `https://localhost`
+- **Keycloak admin**: `https://localhost/keycloak/admin` (admin / admin)
+- **Demo user**: `demo` / `demo123`
 
-El `docker-compose.yml` ya configura el portal backend para usar Keycloak en local
-e importa el realm desde:
-
-- `apps/portal/backend/keycloak/apps-platform-realm.json`
-
-Credenciales demo importadas:
-
-- Usuario: `demo`
-- Password: `demo123`
-
-Variables opcionales para sobreescribir defaults:
+Required environment variables (copy `.env.example` if present, or export):
 
 ```bash
-export PORTAL_SESSION_SECRET="cambia-esto"
+export GEMINI_API_KEY="your_key"
+```
+
+Optional overrides:
+
+```bash
+export PORTAL_SESSION_SECRET="change-me"
 export OAUTH_CLIENT_ID="portal"
 export OAUTH_CLIENT_SECRET="portal-dev-secret"
-export OAUTH_REDIRECT_URI="http://localhost:4200/auth/callback"
+export OAUTH_REDIRECT_URI="https://localhost/auth/callback"
 ```
 
-## Estructura
+## Angular development servers
 
-```text
-apps-platform/
-├── docker-compose.yml
-├── scaffold-app.sh
-├── docs/
-└── apps/  # submódulos git
-    ├── portal/
-    ├── exam-corrector/
-    └── attendance-checker/
+Each app manages its own `node_modules`. Install and serve independently:
+
+```bash
+# Portal
+cd apps/portal && npm install && npm start
+# → http://localhost:4200 (proxies API calls to the Docker backend)
+
+# Element apps (build only, served via Flask static)
+cd apps/exam-corrector && npm install && npm run build:dev
 ```
+
+## Python backend development
+
+Use `requirements-dev.txt` for local installs (includes the SDK as an editable install):
+
+```bash
+cd apps/portal/backend
+pip install -r requirements-dev.txt
+python -m pytest tests/ -v
+```
+
+## Nx commands
+
+```bash
+# Build a specific project
+npx nx run portal:build
+
+# Test a specific project
+npx nx run portal:test
+
+# Lint a specific project
+npx nx run portal:lint
+
+# Run targets only on projects affected by your changes
+npx nx affected -t lint test build
+```
+
+## CI/CD
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `ci.yml` | PR + push to main | `nx affected` lint, test, build; Python backend tests |
+| `deploy.yml` | Push to main | Build Docker images → GHCR; deploy to Hetzner |
