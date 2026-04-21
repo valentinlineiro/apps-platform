@@ -1,14 +1,14 @@
 FROM node:20-alpine AS attendance-build
 WORKDIR /app/apps/attendance-checker
 COPY apps/attendance-checker/package.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY apps/attendance-checker/ ./
 RUN npm run build
 
 FROM node:20-alpine AS portal-build
 WORKDIR /app/apps/portal
 COPY apps/portal/package.json ./package.json
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY apps/portal/ ./
 COPY --from=attendance-build /app/apps/attendance-checker/dist/element/ public/apps/attendance-checker/element/
 RUN npm run build

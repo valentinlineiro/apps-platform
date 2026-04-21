@@ -2,7 +2,7 @@
 FROM node:20-alpine AS element-build
 WORKDIR /app
 COPY apps/aneca-advisor/package.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY apps/aneca-advisor/angular.json apps/aneca-advisor/tsconfig.json ./
 COPY apps/aneca-advisor/frontend/ frontend/
 RUN npx ng build aneca-advisor-element

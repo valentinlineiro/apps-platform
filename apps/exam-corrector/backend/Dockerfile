@@ -2,7 +2,7 @@
 FROM node:20-alpine AS element-build
 WORKDIR /app
 COPY apps/exam-corrector/package.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY apps/exam-corrector/angular.json apps/exam-corrector/tsconfig.json ./
 COPY apps/exam-corrector/frontend/ frontend/
 RUN npx ng build exam-corrector-element
