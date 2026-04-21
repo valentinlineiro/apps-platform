@@ -1,6 +1,9 @@
 **/uploads/
 caddy-data/
 caddy-root.crt
+.auth/
+test-results/
+playwright-report/
 **/__pycache__/
 **/*.pyc
 .env
