@@ -13,7 +13,9 @@ WORKDIR /app
 COPY libs/apps-platform-sdk/ /libs/apps-platform-sdk/
 COPY apps/aneca-advisor/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+COPY apps/aneca-advisor/backend/alembic.ini .
+COPY apps/aneca-advisor/backend/alembic/ alembic/
 COPY apps/aneca-advisor/backend/ .
 COPY --from=element-build /app/backend/static/element/ static/element/
 EXPOSE 5001
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5001", "--workers", "2", "--timeout", "120"]
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5001", "--workers", "2", "--timeout", "120", "--preload"]

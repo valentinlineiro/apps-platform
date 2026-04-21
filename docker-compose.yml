@@ -45,6 +45,7 @@ services:
     environment:
       - ALLOWED_ORIGINS=http://localhost:4200
       - PORTAL_BACKEND_URL=http://portal-backend:5000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
     volumes:
       - exam_corrector_uploads:/app/uploads
     depends_on:

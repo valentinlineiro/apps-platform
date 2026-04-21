@@ -19,8 +19,10 @@ WORKDIR /app
 COPY libs/apps-platform-sdk/ /libs/apps-platform-sdk/
 COPY apps/exam-corrector/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+COPY apps/exam-corrector/backend/alembic.ini .
+COPY apps/exam-corrector/backend/alembic/ alembic/
 COPY apps/exam-corrector/backend/ .
 COPY --from=element-build /app/backend/static/element/ static/element/
 RUN mkdir -p uploads
 EXPOSE 8000
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "300"]
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "300", "--preload"]
