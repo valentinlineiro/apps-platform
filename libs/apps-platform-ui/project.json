@@ -1,7 +1,7 @@
 {
-  "name": "ui-components",
+  "name": "apps-platform-ui",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/ui-components/src",
+  "sourceRoot": "libs/apps-platform-ui/src",
   "prefix": "lib",
   "projectType": "library",
   "tags": [],
@@ -10,7 +10,7 @@
       "executor": "@nx/vitest:test",
       "outputs": ["{options.reportsDirectory}"],
       "options": {
-        "reportsDirectory": "coverage/libs/ui-components"
+        "reportsDirectory": "coverage/libs/apps-platform-ui"
       }
     },
     "lint": {

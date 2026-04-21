@@ -15,7 +15,7 @@
     "skipDefaultLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "ui-components": ["libs/ui-components/src/index.ts"]
+      "apps-platform-ui": ["libs/apps-platform-ui/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

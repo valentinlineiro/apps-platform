@@ -16,7 +16,7 @@
     "module": "ES2022",
     "lib": ["ES2022", "dom"],
     "paths": {
-      "ui-components": ["../../libs/ui-components/src/index.ts"]
+      "apps-platform-ui": ["../../libs/apps-platform-ui/src/index.ts"]
     }
   },
   "angularCompilerOptions": {
