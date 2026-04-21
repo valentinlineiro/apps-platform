@@ -42,3 +42,6 @@ htmlcov/
 .agents/
 .gemini/
 .nx/
+.angular
+
+vitest.config.*.timestamp*
