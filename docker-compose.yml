@@ -59,6 +59,8 @@ services:
     expose:
       - "5001"
     environment:
+      - PORTAL_SESSION_SECRET=${PORTAL_SESSION_SECRET:-dev-portal-session-secret}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
       - PORTAL_BACKEND_URL=http://portal-backend:5000
     depends_on:

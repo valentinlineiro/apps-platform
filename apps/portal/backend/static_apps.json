@@ -10,7 +10,7 @@
     "scriptUrl": "/apps/exam-corrector/element/main.js",
     "elementTag": "exam-corrector-app",
     "backend": {"pathPrefix": "/exam-corrector/"},
-    "app_url": "http://exam-corrector-backend:5000"
+    "app_url": "http://exam-corrector-backend:8000"
   },
   {
     "manifestVersion": 1,
