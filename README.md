@@ -87,6 +87,18 @@ npx nx run <project>:migrate
 npx nx test <project-name>
 ```
 
+## Docker Management
+
+To prevent old Docker images from filling up your disk during development, you can use the following commands:
+
+```bash
+# Remove all unused images older than 7 days
+npm run docker:prune
+
+# Complete cleanup: remove all stopped containers, unused networks, and volumes
+npm run docker:clean
+```
+
 ## Nx commands
 
 ```bash

@@ -2,6 +2,10 @@
   "name": "apps-platform",
   "private": true,
   "workspaces": [],
+  "scripts": {
+    "docker:prune": "docker image prune -af --filter 'until=168h'",
+    "docker:clean": "docker system prune -f --volumes"
+  },
   "devDependencies": {
     "@analogjs/vite-plugin-angular": "~2.1.2",
     "@analogjs/vitest-angular": "~2.1.2",
