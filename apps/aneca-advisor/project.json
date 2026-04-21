@@ -21,6 +21,12 @@
       "options": {
         "cwd": "apps/aneca-advisor"
       }
+    },
+    "lint": {
+      "command": "npm run lint",
+      "options": {
+        "cwd": "apps/aneca-advisor"
+      }
     }
   }
 }

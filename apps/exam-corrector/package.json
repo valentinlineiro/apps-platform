@@ -5,7 +5,8 @@
   "scripts": {
     "build": "ng build exam-corrector-element",
     "build:dev": "ng build exam-corrector-element --configuration development",
-    "test": "ng test exam-corrector-element --passWithNoTests"
+    "test": "ng test exam-corrector-element --passWithNoTests",
+    "lint": "ng lint exam-corrector-element"
   },
   "dependencies": {
     "@angular/common": "^21.0.0",
@@ -24,6 +25,13 @@
     "jest": "^29.0.0",
     "jest-environment-jsdom": "^29.0.0",
     "@types/jest": "^29.0.0",
+    "@angular-eslint/builder": "^18.0.0",
+    "@angular-eslint/eslint-plugin": "^18.0.0",
+    "@angular-eslint/eslint-plugin-template": "^18.0.0",
+    "@angular-eslint/template-parser": "^18.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.0.0",
     "typescript": "~5.9.0"
   }
 }

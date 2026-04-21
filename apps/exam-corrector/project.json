@@ -21,6 +21,12 @@
       "options": {
         "cwd": "apps/exam-corrector"
       }
+    },
+    "lint": {
+      "command": "npm run lint",
+      "options": {
+        "cwd": "apps/exam-corrector"
+      }
     }
   }
 }

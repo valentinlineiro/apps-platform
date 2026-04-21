@@ -21,6 +21,12 @@
       "options": {
         "cwd": "apps/attendance-checker"
       }
+    },
+    "lint": {
+      "command": "npm run lint",
+      "options": {
+        "cwd": "apps/attendance-checker"
+      }
     }
   }
 }

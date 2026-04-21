@@ -21,6 +21,12 @@
       "options": {
         "cwd": "apps/portal"
       }
+    },
+    "lint": {
+      "command": "npm run lint",
+      "options": {
+        "cwd": "apps/portal"
+      }
     }
   }
 }
