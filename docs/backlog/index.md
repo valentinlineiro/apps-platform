@@ -30,7 +30,7 @@ Consult this index to track project progress, identify active implementation tra
 | :--- | :--- | :--- | :--- |
 | **T-001** | [**Replace Heartbeat Registry With Postgres App Catalog**](items/T-001%20-%20Replace%20Heartbeat%20Registry%20With%20Postgres%20App%20Catalog.md) | `Done` | `High` |
 | **T-002** | [**Platform Stabilization and Technical Debt**](items/T-002%20-%20Platform%20Stabilization%20and%20Technical%20Debt.md) | `Active` | `High` |
-| **T-003** | [**Implement Alembic Schema Migrations**](items/T-003%20-%20Implement%20Alembic%20Schema%20Migrations.md) | `Done` | `High` |
+| **T-003** | [**Implement Alembic Schema Migrations**](items/T-003%20-%20Implement%20Alembic%20Schema%20Migrations.md) | `Active` | `High` |
 | **T-004** | [**Distributed Manifest Discovery**](items/T-004%20-%20Distributed%20Manifest%20Discovery.md) | `Planned` | `Medium` |
 
 
