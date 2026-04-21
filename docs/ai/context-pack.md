@@ -20,14 +20,17 @@ AI agents should read this file first whenever they are initialized in this work
 
 ### Core Identity
 - **Project**: Monorepo orchestrator for micro-frontends.
-- **Model**: Heartbeat Registry (Dynamic discovery).
+- **Model**: Declarative App Catalog (Postgres-backed).
 - **Primary Tech**: Nx, Angular 21 (Signals/Zoneless), Flask 3 (Blueprint-based), Docker, Caddy, Keycloak.
 
 ### Hard Constraints
 1. **Frontend**: Standalone components ONLY. Separate HTML/CSS files ONLY.
 2. **Backend**: Must use `apps-platform-sdk` for shared backend primitives.
-3. **Database**: SQLite locally, PostgreSQL in Docker.
-4. **Auth**: Keycloak OIDC with PKCE. Gated by Nginx `auth_request`.
+3. **Python Environment**: **Mandatory Isolation**. Every backend app and library MUST use a local `.venv`.
+4. **Execution**: Never run `pip` or `python` globally. Always use `.venv/bin/python3` and `.venv/bin/pip`.
+5. **Setup**: Use `npx nx run <project>:setup` to initialize virtual environments.
+6. **Database**: PostgreSQL (Docker-backed) is the primary source of truth for the app catalog and user data.
+7. **Auth**: Keycloak OIDC with PKCE. Gated by Nginx `auth_request`.
 
 ### Knowledge Map
 - Architecture: `docs/concepts/architecture.md`
@@ -45,4 +48,5 @@ AI agents should read this file first whenever they are initialized in this work
 - [Coding Standards](../how-to/coding-standards.md)
 
 ## Change log
+- **2026-04-21**: Updated with mandatory Python virtual environment standards and Declarative App Catalog transition.
 - **2026-04-17**: Initial version of the AI Context Pack.

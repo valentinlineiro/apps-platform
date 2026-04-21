@@ -55,8 +55,14 @@ npx nx test apps-platform-sdk
 npx nx run-many -t build
 ```
 
+### Local Python Development
+The project uses isolated virtual environments for every app. Before running tests or backends locally:
+1. Initialize environments: `npx nx run-many -t setup`
+2. Always use the project's `.venv`: `.venv/bin/python3 app.py`
+
 ### Testing
-- **Python Backends**: Run `pytest` within the app's backend directory.
+- **Python Backends**: Use Nx: `npx nx test <project-name>` (this uses the isolated `.venv`).
+- **Manual Testing**: Run `.venv/bin/python3 -m pytest tests/` from the backend directory.
 - **Frontend**: Use `npx nx test <project-name>`.
 
 ## References
@@ -64,4 +70,5 @@ npx nx run-many -t build
 - [System Architecture](../concepts/architecture.md)
 
 ## Change log
+- **2026-04-21**: Added local Python development instructions for virtual environment isolation.
 - **2026-04-17**: Combined development workflow into a consolidated quickstart guide.
