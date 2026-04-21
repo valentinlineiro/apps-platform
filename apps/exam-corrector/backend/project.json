@@ -21,6 +21,18 @@
       "options": {
         "cwd": "apps/exam-corrector/backend"
       }
+    },
+    "migration": {
+      "command": ".venv/bin/alembic revision --message",
+      "options": {
+        "cwd": "apps/exam-corrector/backend"
+      }
+    },
+    "migrate": {
+      "command": ".venv/bin/alembic upgrade head",
+      "options": {
+        "cwd": "apps/exam-corrector/backend"
+      }
     }
   }
 }

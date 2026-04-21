@@ -874,8 +874,7 @@ def auth_me():
 
 def _bootstrap():
     _ensure_db_exists()
-    _init_db()
-    _run_migrations()
+    _run_alembic_upgrade()
     _init_default_tenant()
     _init_static_apps()
     # Wire blueprints after DB is ready
@@ -890,6 +889,11 @@ def _bootstrap():
 
 if __name__ == "__main__":
     _bootstrap()
+    app.run(host="0.0.0.0", port=5000)
+
+
+_bootstrap()
+
     app.run(host="0.0.0.0", port=5000)
 
 

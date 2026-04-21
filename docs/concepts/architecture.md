@@ -11,7 +11,7 @@ related: [DOC-CON-002, DOC-QS-001]
 # System Architecture
 
 ## Purpose
-This document defines the high-level architectural patterns of the platform, specifically the "Heartbeat Registry" model for dynamic micro-frontend composition.
+This document defines the high-level architectural patterns of the platform, specifically the "Declarative Catalog" model and shared infrastructure.
 
 ## When to use
 Consult this document when adding new applications, debugging service discovery, or understanding the end-to-end traffic flow.
@@ -21,20 +21,24 @@ Consult this document when adding new applications, debugging service discovery,
 ### Overview
 The project is a monorepo-style platform orchestrator for a suite of integrated applications (**Portal**, **Exam Corrector**, **ANECA Advisor**, **Attendance Checker**).
 
-### Architecture Model: "Heartbeat Registry"
-The platform uses a dynamic service discovery and frontend composition model.
+### Architecture Model: "Declarative Catalog"
+The platform uses a declarative service discovery and frontend composition model.
 
 #### 1. Traffic Flow
 **Browser** → **Caddy** (TLS termination for `localhost`) → **Portal Nginx** → **App Backends** (Proxied and Auth-gated).
 
-#### 2. Service Discovery (Heartbeat Loop)
-- **App Backends** register themselves with the `portal-backend` at startup (`POST /api/registry/register`).
-- Apps send a **heartbeat** every 30 seconds (`POST /api/registry/heartbeat/<app_id>`).
-- The `portal-backend` evicts apps missing heartbeats (default TTL: 60s).
-- **Portal Frontend** fetches the active registry and dynamically loads apps as Web Components via `MicroFrontendLoaderComponent`.
+#### 2. Service Discovery (Declarative)
+- **App Metadata**: Each app defines its capabilities and endpoints in a manifest.
+- **Static Registry**: The `portal-backend` consumes a central `static_apps.json` catalog to discover and expose applications.
+- **Portal Frontend**: Fetches the catalog from the portal API and dynamically loads apps as Web Components via `MicroFrontendLoaderComponent`.
 
-#### 3. MFE Loading (`MicroFrontendLoaderComponent`)
-Each app's `scriptUrl` is injected into the page as a `type="module"` script tag. Using `type="module"` isolates each Angular runtime in module scope, preventing global variable collisions when multiple MFEs are loaded on the same page. After the script loads, the component waits for `customElements.whenDefined(elementTag)` before mounting the element, which eliminates the race condition between the script's `onload` event and Angular's async `createApplication().then(customElements.define)` bootstrap.
+#### 3. Database & Migrations
+- **Postgres**: A shared PostgreSQL instance is used as the primary data store.
+- **Alembic**: Each backend manages its own schema using Alembic migrations.
+- **Automatic Sync**: Migrations are executed automatically by the application on startup (`_bootstrap` sequence), ensuring the schema matches the code in every environment.
+
+#### 4. MFE Loading (`MicroFrontendLoaderComponent`)
+Each app's `scriptUrl` is injected into the page as a `type="module"` script tag. Using `type="module"` isolates each Angular runtime in module scope, preventing global variable collisions when multiple MFEs are loaded on the same page. After the script loads, the component waits for `customElements.whenDefined(elementTag)` before mounting the element.
 
 ### Directory Structure
 ```text
@@ -77,5 +81,6 @@ libs/
 - [Portal Deep Dive](../apps/portal/index.md)
 
 ## Change log
+- **2026-04-21**: Redesigned as Declarative Catalog model; added Alembic Postgres migration architecture.
 - **2026-04-20**: Add aneca-advisor; document MFE module isolation and whenDefined fix; add "Adding a New App" guide; update directory structure.
 - **2026-04-17**: Initial version moved to `concepts/` and standardized.

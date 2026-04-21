@@ -1,67 +1,38 @@
 import json
-import os
-import sqlite3
 import time
+
+try:
+    import psycopg2
+    import psycopg2.extras
+except ImportError:
+    psycopg2 = None  # type: ignore[assignment]
 
 from domain.job import Job
 
-_SQLITE_TIMEOUT_SECONDS = 30
-
 
 class JobStore:
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-        self._init_db()
+    def __init__(self, database_url: str):
+        self.database_url = database_url
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(
-            self.db_path,
-            check_same_thread=False,
-            timeout=_SQLITE_TIMEOUT_SECONDS,
-        )
-        conn.row_factory = sqlite3.Row
-        conn.execute(f"PRAGMA busy_timeout={_SQLITE_TIMEOUT_SECONDS * 1000}")
-        try:
-            # WAL mode is persistent per database file. During multi-worker boot,
-            # another worker may be switching modes at the same time.
-            conn.execute("PRAGMA journal_mode=WAL")
-        except sqlite3.OperationalError as exc:
-            if "database is locked" not in str(exc).lower():
-                raise
+    def _connect(self):
+        conn = psycopg2.connect(self.database_url, cursor_factory=psycopg2.extras.RealDictCursor)
         return conn
-
-    def _init_db(self) -> None:
-        with self._connect() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS jobs (
-                    id          TEXT PRIMARY KEY,
-                    status      TEXT NOT NULL,
-                    progress    INTEGER NOT NULL DEFAULT 0,
-                    stage       TEXT,
-                    message     TEXT,
-                    template_id TEXT,
-                    created_at  REAL NOT NULL,
-                    updated_at  REAL NOT NULL,
-                    finished_at REAL,
-                    result_json TEXT,
-                    error       TEXT
-                )
-            """)
 
     def create(self, job: Job) -> None:
         with self._connect() as conn:
-            conn.execute(
-                """INSERT INTO jobs
-                   (id, status, progress, stage, message, template_id,
-                    created_at, updated_at, finished_at, result_json, error)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (
-                    job.id, job.status, job.progress, job.stage, job.message,
-                    job.template_id, job.created_at, job.updated_at, job.finished_at,
-                    json.dumps(job.result) if job.result is not None else None,
-                    job.error,
-                ),
-            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO jobs
+                       (id, status, progress, stage, message, template_id,
+                        created_at, updated_at, finished_at, result_json, error)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (
+                        job.id, job.status, job.progress, job.stage, job.message,
+                        job.template_id, job.created_at, job.updated_at, job.finished_at,
+                        json.dumps(job.result) if job.result is not None else None,
+                        job.error,
+                    ),
+                )
 
     def update(self, job_id: str, **fields) -> None:
         if not fields:
@@ -70,25 +41,30 @@ class JobStore:
         if "result" in fields:
             result = fields.pop("result")
             fields["result_json"] = json.dumps(result) if result is not None else None
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        
+        set_clause = ", ".join(f"{k} = %s" for k in fields)
         values = list(fields.values()) + [job_id]
         with self._connect() as conn:
-            conn.execute(f"UPDATE jobs SET {set_clause} WHERE id = ?", values)
+            with conn.cursor() as cur:
+                cur.execute(f"UPDATE jobs SET {set_clause} WHERE id = %s", values)
 
     def get(self, job_id: str):
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM jobs WHERE id = %s", (job_id,))
+                row = cur.fetchone()
         if row is None:
             return None
         return self._row_to_job(row)
 
     def delete_finished_before(self, cutoff: float) -> int:
         with self._connect() as conn:
-            cursor = conn.execute(
-                "DELETE FROM jobs WHERE status IN ('done', 'error') AND finished_at < ?",
-                (cutoff,),
-            )
-            return cursor.rowcount
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM jobs WHERE status IN ('done', 'error') AND finished_at < %s",
+                    (cutoff,),
+                )
+                return cur.rowcount
 
     @staticmethod
     def _row_to_job(row) -> Job:

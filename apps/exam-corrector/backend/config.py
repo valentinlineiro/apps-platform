@@ -7,6 +7,7 @@ TEMPLATE_LIBRARY_PATH = os.path.join(UPLOAD_FOLDER, "saved_templates.json")
 TEMPLATE_STORE_DIR = os.path.join(UPLOAD_FOLDER, "templates")
 SCORING_RULES_PATH = os.path.join(UPLOAD_FOLDER, "scoring_rules.json")
 JOBS_DB_PATH = os.path.join(UPLOAD_FOLDER, "jobs.db")
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "http://localhost:4200").split(",")
 

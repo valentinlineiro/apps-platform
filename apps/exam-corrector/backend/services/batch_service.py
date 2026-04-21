@@ -4,11 +4,16 @@ import json
 import logging
 import os
 import shutil
-import sqlite3
 import threading
 import time
 import uuid
 import zipfile
+
+try:
+    import psycopg2
+    import psycopg2.extras
+except ImportError:
+    psycopg2 = None  # type: ignore[assignment]
 
 import config
 from services import job_service
@@ -16,8 +21,6 @@ from services import job_service
 _log = logging.getLogger(__name__)
 
 # Semaphore limiting concurrent chunk-processing threads.
-# Created lazily per-process so it is always initialized in the gunicorn worker
-# process that will actually use it, avoiding fork+threading issues.
 _semaphore: threading.Semaphore | None = None
 _sem_lock = threading.Lock()
 
@@ -25,7 +28,6 @@ _IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 _PDF_DPI = 150
 _CHUNK_SIZE = 10   # exams per chunk
 _MAX_PARALLEL = 1  # concurrent chunk threads
-_SQLITE_TIMEOUT_SECONDS = 30
 
 
 def _get_semaphore() -> threading.Semaphore:
@@ -37,60 +39,9 @@ def _get_semaphore() -> threading.Semaphore:
     return _semaphore
 
 
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(
-        config.JOBS_DB_PATH,
-        check_same_thread=False,
-        timeout=_SQLITE_TIMEOUT_SECONDS,
-    )
-    conn.row_factory = sqlite3.Row
-    conn.execute(f"PRAGMA busy_timeout={_SQLITE_TIMEOUT_SECONDS * 1000}")
-    try:
-        # Multiple gunicorn workers may open the DB concurrently on boot.
-        conn.execute("PRAGMA journal_mode=WAL")
-    except sqlite3.OperationalError as exc:
-        if "database is locked" not in str(exc).lower():
-            raise
+def _connect():
+    conn = psycopg2.connect(config.DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     return conn
-
-
-def init_tables() -> None:
-    with _connect() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS batches (
-                id          TEXT PRIMARY KEY,
-                template_id TEXT NOT NULL,
-                total       INTEGER NOT NULL,
-                done        INTEGER NOT NULL DEFAULT 0,
-                failed      INTEGER NOT NULL DEFAULT 0,
-                created_at  REAL NOT NULL,
-                finished_at REAL
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS batch_items (
-                batch_id     TEXT NOT NULL,
-                idx          INTEGER NOT NULL,
-                filename     TEXT NOT NULL,
-                status       TEXT NOT NULL DEFAULT 'queued',
-                result_json  TEXT,
-                error        TEXT,
-                confidence   REAL,
-                needs_review INTEGER NOT NULL DEFAULT 0,
-                reviewed     INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY (batch_id, idx)
-            )
-        """)
-        # Migrations: add columns that may be missing from older databases
-        for stmt in [
-            "ALTER TABLE batch_items ADD COLUMN confidence REAL",
-            "ALTER TABLE batch_items ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE batch_items ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0",
-        ]:
-            try:
-                conn.execute(stmt)
-            except sqlite3.OperationalError:
-                pass  # column already exists
 
 
 def _extract_from_zip(zip_path: str, extract_dir: str) -> list[tuple[str, str]]:
@@ -132,9 +83,6 @@ def _extract_from_pdf(pdf_path: str, extract_dir: str) -> list[tuple[str, str]]:
 
 
 def _prewarm_template(ruta_plantilla: str, ready: threading.Event) -> None:
-    """Detect and cache the answer grid for *ruta_plantilla* before chunk threads
-    start, so every chunk gets an immediate cache hit.  Runs as a daemon thread;
-    sets *ready* when done (or on failure)."""
     try:
         from services import job_service
         from services.image_service import load_and_crop, hash_image
@@ -179,20 +127,20 @@ def start_batch(file_path: str, template_id: str, ruta_plantilla: str) -> str:
     now = time.time()
 
     with _connect() as conn:
-        conn.execute(
-            "INSERT INTO batches (id, template_id, total, created_at) VALUES (?, ?, ?, ?)",
-            (batch_id, template_id, total, now),
-        )
-        conn.executemany(
-            "INSERT INTO batch_items (batch_id, idx, filename) VALUES (?, ?, ?)",
-            [(batch_id, i, name) for i, (name, _) in enumerate(exam_files)],
-        )
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO batches (id, template_id, total, created_at) VALUES (%s, %s, %s, %s)",
+                (batch_id, template_id, total, now),
+            )
+            for i, (name, _) in enumerate(exam_files):
+                cur.execute(
+                    "INSERT INTO batch_items (batch_id, idx, filename) VALUES (%s, %s, %s)",
+                    (batch_id, i, name),
+                )
 
     _log.info(f"batch {batch_id[:8]}: starting — {total} exams, "
               f"{(total + _CHUNK_SIZE - 1) // _CHUNK_SIZE} chunks of ≤{_CHUNK_SIZE}")
 
-    # Pre-warm template caches in a dedicated thread.  Chunk threads wait on
-    # this event so only one Gemini template-analysis call is ever made.
     template_ready = threading.Event()
     threading.Thread(
         target=_prewarm_template,
@@ -219,26 +167,28 @@ def _store_result(batch_id: str, idx: int, result: dict) -> None:
     needs_review = int(result.get("needs_review", False))
     confidence = result.get("min_confidence")
     with _connect() as conn:
-        conn.execute(
-            "UPDATE batch_items SET status='done', result_json=?, confidence=?, needs_review=? "
-            "WHERE batch_id=? AND idx=?",
-            (json.dumps(result), confidence, needs_review, batch_id, idx),
-        )
-        conn.execute("UPDATE batches SET done=done+1 WHERE id=?", (batch_id,))
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE batch_items SET status='done', result_json=%s, confidence=%s, needs_review=%s "
+                "WHERE batch_id=%s AND idx=%s",
+                (json.dumps(result), confidence, needs_review, batch_id, idx),
+            )
+            cur.execute("UPDATE batches SET done=done+1 WHERE id=%s", (batch_id,))
 
 
 def _store_error(batch_id: str, idx: int, error: str) -> None:
     with _connect() as conn:
-        conn.execute(
-            "UPDATE batch_items SET status='error', error=? WHERE batch_id=? AND idx=?",
-            (error, batch_id, idx),
-        )
-        conn.execute("UPDATE batches SET failed=failed+1 WHERE id=?", (batch_id,))
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE batch_items SET status='error', error=%s WHERE batch_id=%s AND idx=%s",
+                (error, batch_id, idx),
+            )
+            cur.execute("UPDATE batches SET failed=failed+1 WHERE id=%s", (batch_id,))
 
 
 def _process_chunk(
     batch_id: str,
-    items: list[tuple[int, str, str]],  # (idx, filename, ruta_examen)
+    items: list[tuple[int, str, str]],
     ruta_plantilla: str,
     extract_dir: str,
     template_ready: threading.Event | None = None,
@@ -246,18 +196,18 @@ def _process_chunk(
     first_idx = items[0][0] if items else "?"
     tag = f"batch {batch_id[:8]} chunk@{first_idx}"
 
-    # Wait for template pre-warm (up to 120 s) before competing for the semaphore.
     if template_ready is not None:
         template_ready.wait(timeout=120)
 
     with _get_semaphore():
         _log.info(f"{tag}: acquired semaphore, processing {len(items)} items")
         with _connect() as conn:
-            for idx, _, _ in items:
-                conn.execute(
-                    "UPDATE batch_items SET status='processing' WHERE batch_id=? AND idx=?",
-                    (batch_id, idx),
-                )
+            with conn.cursor() as cur:
+                for idx, _, _ in items:
+                    cur.execute(
+                        "UPDATE batch_items SET status='processing' WHERE batch_id=%s AND idx=%s",
+                        (batch_id, idx),
+                    )
         try:
             examen_items = [(filename, ruta) for _, filename, ruta in items]
             results = job_service.procesar_correccion_lote(ruta_plantilla, examen_items)
@@ -270,7 +220,6 @@ def _process_chunk(
             _log.info(f"{tag}: batch done — all {len(items)} items stored")
         except Exception as exc:
             _log.warning(f"{tag}: batch call failed ({exc}), falling back to individual corrections")
-            # Fallback: correct each exam individually
             for idx, filename, ruta_examen in items:
                 try:
                     _log.info(f"{tag}: correcting item {idx} ({filename}) individually")
@@ -291,35 +240,41 @@ def _process_chunk(
 def _check_finalize(batch_id: str, extract_dir: str) -> None:
     is_finished = False
     with _connect() as conn:
-        row = conn.execute(
-            "SELECT total, done, failed FROM batches WHERE id=?", (batch_id,)
-        ).fetchone()
-        if row and (row["done"] + row["failed"]) >= row["total"]:
-            conn.execute(
-                "UPDATE batches SET finished_at=? WHERE id=? AND finished_at IS NULL",
-                (time.time(), batch_id),
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT total, done, failed FROM batches WHERE id=%s", (batch_id,)
             )
-            is_finished = True
+            row = cur.fetchone()
+            if row and (row["done"] + row["failed"]) >= row["total"]:
+                cur.execute(
+                    "UPDATE batches SET finished_at=%s WHERE id=%s AND finished_at IS NULL",
+                    (time.time(), batch_id),
+                )
+                is_finished = True
     if is_finished:
         shutil.rmtree(extract_dir, ignore_errors=True)
 
 
 def get_status(batch_id: str) -> dict | None:
     with _connect() as conn:
-        row = conn.execute(
-            "SELECT total, done, failed, finished_at FROM batches WHERE id=?",
-            (batch_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        item_row = conn.execute(
-            "SELECT filename FROM batch_items WHERE batch_id=? AND status='processing' ORDER BY idx LIMIT 1",
-            (batch_id,),
-        ).fetchone()
-        review_row = conn.execute(
-            "SELECT COUNT(*) as cnt FROM batch_items WHERE batch_id=? AND needs_review=1 AND reviewed=0",
-            (batch_id,),
-        ).fetchone()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT total, done, failed, finished_at FROM batches WHERE id=%s",
+                (batch_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return None
+            cur.execute(
+                "SELECT filename FROM batch_items WHERE batch_id=%s AND status='processing' ORDER BY idx LIMIT 1",
+                (batch_id,),
+            )
+            item_row = cur.fetchone()
+            cur.execute(
+                "SELECT COUNT(*) as cnt FROM batch_items WHERE batch_id=%s AND needs_review=1 AND reviewed=0",
+                (batch_id,),
+            )
+            review_row = cur.fetchone()
     total = row["total"]
     done = row["done"]
     failed = row["failed"]
@@ -336,14 +291,17 @@ def get_status(batch_id: str) -> dict | None:
 
 def get_items(batch_id: str) -> list | None:
     with _connect() as conn:
-        exists = conn.execute("SELECT 1 FROM batches WHERE id=?", (batch_id,)).fetchone()
-        if not exists:
-            return None
-        rows = conn.execute(
-            "SELECT filename, status, result_json, error, confidence, needs_review, reviewed "
-            "FROM batch_items WHERE batch_id=? ORDER BY idx",
-            (batch_id,),
-        ).fetchall()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM batches WHERE id=%s", (batch_id,))
+            exists = cur.fetchone()
+            if not exists:
+                return None
+            cur.execute(
+                "SELECT filename, status, result_json, error, confidence, needs_review, reviewed "
+                "FROM batch_items WHERE batch_id=%s ORDER BY idx",
+                (batch_id,),
+            )
+            rows = cur.fetchall()
     items = []
     for row in rows:
         item: dict = {
@@ -367,14 +325,17 @@ def get_items(batch_id: str) -> list | None:
 
 def get_review_items(batch_id: str) -> list | None:
     with _connect() as conn:
-        exists = conn.execute("SELECT 1 FROM batches WHERE id=?", (batch_id,)).fetchone()
-        if not exists:
-            return None
-        rows = conn.execute(
-            "SELECT idx, filename, result_json, confidence, reviewed "
-            "FROM batch_items WHERE batch_id=? AND needs_review=1 ORDER BY idx",
-            (batch_id,),
-        ).fetchall()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM batches WHERE id=%s", (batch_id,))
+            exists = cur.fetchone()
+            if not exists:
+                return None
+            cur.execute(
+                "SELECT idx, filename, result_json, confidence, reviewed "
+                "FROM batch_items WHERE batch_id=%s AND needs_review=1 ORDER BY idx",
+                (batch_id,),
+            )
+            rows = cur.fetchall()
     items = []
     for row in rows:
         r = json.loads(row["result_json"]) if row["result_json"] else {}
@@ -394,20 +355,23 @@ def get_review_items(batch_id: str) -> list | None:
 
 def mark_reviewed(batch_id: str, idx: int) -> bool:
     with _connect() as conn:
-        result = conn.execute(
-            "UPDATE batch_items SET reviewed=1 WHERE batch_id=? AND idx=? AND needs_review=1",
-            (batch_id, idx),
-        )
-    return result.rowcount > 0
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE batch_items SET reviewed=1 WHERE batch_id=%s AND idx=%s AND needs_review=1",
+                (batch_id, idx),
+            )
+            return cur.rowcount > 0
 
 
 def get_csv(batch_id: str) -> str:
     with _connect() as conn:
-        rows = conn.execute(
-            "SELECT filename, status, result_json, error "
-            "FROM batch_items WHERE batch_id=? ORDER BY idx",
-            (batch_id,),
-        ).fetchall()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT filename, status, result_json, error "
+                "FROM batch_items WHERE batch_id=%s ORDER BY idx",
+                (batch_id,),
+            )
+            rows = cur.fetchall()
 
     buf = io.StringIO()
     writer = csv.writer(buf)

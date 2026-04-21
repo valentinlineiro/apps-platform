@@ -21,6 +21,18 @@
       "options": {
         "cwd": "apps/aneca-advisor/backend"
       }
+    },
+    "migration": {
+      "command": ".venv/bin/alembic revision --message",
+      "options": {
+        "cwd": "apps/aneca-advisor/backend"
+      }
+    },
+    "migrate": {
+      "command": ".venv/bin/alembic upgrade head",
+      "options": {
+        "cwd": "apps/aneca-advisor/backend"
+      }
     }
   }
 }

@@ -62,5 +62,21 @@ Backend uploads should be persisted via Docker volumes (e.g., `exam_corrector_up
 - [Quickstart Guide](../quickstart/setup.md)
 
 ## Change log
+- **2026-04-21**: Transitioned to Declarative Catalog; added mandatory Python venv isolation; introduced Alembic database migrations.
+- **2026-04-17**: Initial version moved to `how-to/` and standardized.
+dk.observability import setup_logging, log_exception
+
+setup_logging(app)
+log_exception("Something went wrong")
+```
+
+#### 3. File Handling
+Backend uploads should be persisted via Docker volumes (e.g., `exam_corrector_uploads`).
+
+## References
+- [System Architecture](../concepts/architecture.md)
+- [Quickstart Guide](../quickstart/setup.md)
+
+## Change log
 - **2026-04-21**: Transitioned from Heartbeat Registry to Declarative Catalog; added mandatory Python venv isolation.
 - **2026-04-17**: Initial version moved to `how-to/` and standardized.

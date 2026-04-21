@@ -69,35 +69,19 @@ def _db():
     return _PgConn(conn)
 
 
-def _init_db() -> None:
-    app.logger.info("initializing aneca database schema")
-    with _db() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS aneca_journal_index (
-                id       SERIAL PRIMARY KEY,
-                issn_1   TEXT,
-                issn_2   TEXT,
-                quartile TEXT NOT NULL,
-                title    TEXT,
-                h_index  INTEGER,
-                category TEXT
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_aneca_journal_issn1 ON aneca_journal_index (issn_1)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_aneca_journal_issn2 ON aneca_journal_index (issn_2)")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS aneca_articles (
-                id           SERIAL PRIMARY KEY,
-                user_id      TEXT NOT NULL,
-                article_json TEXT NOT NULL,
-                created_at   DOUBLE PRECISION NOT NULL
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_aneca_articles_user ON aneca_articles (user_id)")
+def _run_alembic_upgrade() -> None:
+    """Run alembic upgrade head to ensure the database schema is up-to-date."""
+    if not DATABASE_URL:
+        app.logger.warning("DATABASE_URL not set, skipping migrations")
+        return
+    app.logger.info("running database migrations (alembic)")
+    try:
+        ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
+        cfg = alembic.config.Config(ini_path)
+        alembic.command.upgrade(cfg, "head")
+        app.logger.info("database migrations complete")
+    except Exception as exc:
+        app.logger.error(f"database migrations failed: {exc}")
 
 
 @app.get("/manifest")
@@ -106,7 +90,7 @@ def manifest():
 
 
 def _bootstrap() -> None:
-    _init_db()
+    _run_alembic_upgrade()
     journal_repo = SqlJournalQuartileGateway(_db)
     article_repo = SqlArticleRepository(_db)
     app.register_blueprint(create_aneca_blueprint(journal_repo, article_repo))

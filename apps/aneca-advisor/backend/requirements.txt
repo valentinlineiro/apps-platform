@@ -4,4 +4,6 @@ gunicorn
 requests
 psycopg2-binary
 pytest>=8.0
-/libs/apps-platform-sdk
+sqlalchemy>=2.0
+alembic>=1.13
+../../../libs/apps-platform-sdk

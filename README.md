@@ -39,63 +39,52 @@ apps-platform/
 | portal-backend (Flask) | 5000 | internal only |
 | exam-corrector-backend | 8000 | internal only |
 | aneca-advisor-backend | 5001 | internal only |
-| Postgres | 5432 | internal only |
+| Postgres | 5432 | `:5432` (migrations/dev) |
 | Keycloak | 8080 | `https://localhost/keycloak/` |
 
 ## Prerequisites
 
 - Docker with Buildx
-- Node 20 (for local Angular development)
-- Python 3.11 (for local backend development)
+- Node 20+ (for local Angular development)
+- Python 3.12+ (for local backend development)
 
 ## Local startup
 
 ```bash
+# 1. Start the infrastructure (Postgres, Keycloak, etc.)
+docker compose up -d postgres keycloak caddy
+
+# 2. Initialize the monorepo environments
+npx nx run-many -t setup
+
+# 3. Start everything
 docker compose up --build
 ```
 
-Access points after startup:
+## Python development
 
-- **Portal**: `https://localhost`
-- **Keycloak admin**: `https://localhost/keycloak/admin` (admin / admin)
-- **Demo user**: `demo` / `demo123`
+The project uses **isolated virtual environments** for every app. Never install packages into your system Python.
 
-Required environment variables (copy `.env.example` if present, or export):
-
+### Environment Setup
 ```bash
-export GEMINI_API_KEY="your_key"
+# Initialize all virtual environments
+npx nx run-many -t setup
 ```
 
-Optional overrides:
-
+### Database Migrations (Alembic)
+Migrations run automatically on container startup. To manage them manually:
 ```bash
-export PORTAL_SESSION_SECRET="change-me"
-export OAUTH_CLIENT_ID="portal"
-export OAUTH_CLIENT_SECRET="portal-dev-secret"
-export OAUTH_REDIRECT_URI="https://localhost/auth/callback"
+# Create a new migration
+npx nx run <project>:migration --message="Add user bio"
+
+# Apply migrations
+npx nx run <project>:migrate
 ```
 
-## Angular development servers
-
-Each app manages its own `node_modules`. Install and serve independently:
-
+### Testing
 ```bash
-# Portal
-cd apps/portal && npm install && npm start
-# → http://localhost:4200 (proxies API calls to the Docker backend)
-
-# Element apps (build only, served via Flask static)
-cd apps/exam-corrector && npm install && npm run build:dev
-```
-
-## Python backend development
-
-Use `requirements-dev.txt` for local installs (includes the SDK as an editable install):
-
-```bash
-cd apps/portal/backend
-pip install -r requirements-dev.txt
-python -m pytest tests/ -v
+# Run tests for a specific project (uses isolated .venv)
+npx nx test <project-name>
 ```
 
 ## Nx commands
