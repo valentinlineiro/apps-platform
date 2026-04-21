@@ -11,6 +11,11 @@
       "cache": true
     }
   },
+  "defaultBase": "main",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "sharedGlobals": ["{workspaceRoot}/nx.json"]
+  },
   "analytics": true,
   "plugins": [
     {
