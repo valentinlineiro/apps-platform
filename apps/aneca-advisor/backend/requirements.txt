@@ -4,4 +4,4 @@ gunicorn
 requests
 psycopg2-binary
 pytest>=8.0
--e ../../../libs/apps-platform-sdk
+/libs/apps-platform-sdk

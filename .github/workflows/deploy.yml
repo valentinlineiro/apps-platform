@@ -15,17 +15,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.SUBMODULES_PAT || github.token }}
-
-      - name: Configure submodule auth
-        env:
-          SUBMODULES_PAT: ${{ secrets.SUBMODULES_PAT }}
-        run: |
-          if [ -n "$SUBMODULES_PAT" ]; then
-            git config --global url."https://x-access-token:${SUBMODULES_PAT}@github.com/".insteadOf "https://github.com/"
-          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -52,7 +41,8 @@ jobs:
       - name: Build & push portal-backend
         uses: docker/build-push-action@v6
         with:
-          context: apps/portal/backend
+          context: .
+          file: apps/portal/backend/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/portal-backend:latest
@@ -63,7 +53,7 @@ jobs:
       - name: Build & push exam-corrector-backend
         uses: docker/build-push-action@v6
         with:
-          context: apps/exam-corrector
+          context: .
           file: apps/exam-corrector/backend/Dockerfile
           push: true
           tags: |
@@ -78,19 +68,8 @@ jobs:
     needs: build-push
     environment: production
     steps:
-      - name: Checkout (portal submodule for keycloak/postgres files)
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Init portal submodule
-        env:
-          SUBMODULES_PAT: ${{ secrets.SUBMODULES_PAT }}
-        run: |
-          if [ -n "$SUBMODULES_PAT" ]; then
-            git config --global url."https://x-access-token:${SUBMODULES_PAT}@github.com/".insteadOf "https://github.com/"
-          fi
-          git submodule update --init --depth 1 apps/portal
 
       - name: Copy config files to server
         uses: appleboy/scp-action@v0.1.7

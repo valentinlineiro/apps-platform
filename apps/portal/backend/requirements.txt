@@ -4,4 +4,4 @@ gunicorn==22.0.0
 requests==2.32.3
 psycopg2-binary==2.9.10
 pytest>=8.0
--e ../../../libs/apps-platform-sdk
+/libs/apps-platform-sdk
