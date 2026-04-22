@@ -4,6 +4,7 @@ import {
 import { DecimalPipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { AnecaApiService, Article, EvaluationResult } from './services/aneca-api.service';
+import { TranslationService, TranslatePipe } from '@apps-platform/ui';
 
 const CREDIT_ROLES = ['Investigación', 'Metodología', 'Redacción', 'Software'];
 const DOCENTIA_LEVELS = ['No tengo', 'Aprobado', 'Notable', 'Excelente'];
@@ -19,13 +20,14 @@ const TABS = [
 @Component({
   selector: 'app-aneca-advisor',
   standalone: true,
-  imports: [DecimalPipe],
+  imports: [DecimalPipe, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './aneca-advisor-app.component.html',
   styleUrl: './aneca-advisor-app.component.css',
 })
 export class AnecaAdvisorAppComponent implements OnInit {
   private api = inject(AnecaApiService);
+  private translationService = inject(TranslationService);
 
   // ── Config ──────────────────────────────────────────────────────────────
   figura    = signal<string>(FIGURAS[0]);
@@ -55,7 +57,13 @@ export class AnecaAdvisorAppComponent implements OnInit {
   error     = signal<string | null>(null);
 
   // ── Derived ──────────────────────────────────────────────────────────────
-  readonly tabs = TABS;
+  readonly tabs = computed(() => [
+    { id: 'investigacion', label: this.translationService.translate('TABS.INVESTIGACION') },
+    { id: 'docencia',      label: this.translationService.translate('TABS.DOCENCIA') },
+    { id: 'transferencia', label: this.translationService.translate('TABS.TRANSFERENCIA') },
+    { id: 'idoneidad',     label: this.translationService.translate('TABS.IDONEIDAD') },
+    { id: 'horizonte',     label: this.translationService.translate('TABS.HORIZONTE') },
+  ]);
   readonly docEntiaLevels = DOCENTIA_LEVELS;
   readonly figuras = FIGURAS;
   readonly creditRoles = CREDIT_ROLES;
@@ -68,6 +76,7 @@ export class AnecaAdvisorAppComponent implements OnInit {
   articlesOnly = computed(() => this.articles().filter(a => a.tipo === 'Articulo'));
 
   async ngOnInit() {
+    this.translationService.loadTranslations('aneca-advisor', this.translationService.currentLanguage());
     const [fields, articles] = await Promise.all([
       firstValueFrom(this.api.getFields()),
       firstValueFrom(this.api.getArticles()),
@@ -100,7 +109,7 @@ export class AnecaAdvisorAppComponent implements OnInit {
       const articles = await firstValueFrom(this.api.syncOrcid(id));
       this.articles.set(articles);
     } catch {
-      this.error.set('Error al sincronizar ORCID. Verifica el ID e inténtalo de nuevo.');
+      this.error.set(this.translationService.translate('ERRORS.ORCID_SYNC'));
     } finally {
       this.syncing.set(false);
     }
@@ -136,7 +145,7 @@ export class AnecaAdvisorAppComponent implements OnInit {
       }));
       this.result.set(result);
     } catch {
-      this.error.set('Error al evaluar. Inténtalo de nuevo.');
+      this.error.set(this.translationService.translate('ERRORS.EVALUATION'));
     } finally {
       this.evaluating.set(false);
     }

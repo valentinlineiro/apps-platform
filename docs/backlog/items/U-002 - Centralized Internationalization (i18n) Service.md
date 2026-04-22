@@ -22,21 +22,26 @@ Currently, applications handle translations independently (mostly Spanish), lead
 - **Impact**: Consistent terminology across apps and ready-to-scale localization.
 
 ## Acceptance Criteria
-- [ ] **Shared Service**: Create an i18n service in the UI library using standard Angular patterns (or a framework-agnostic core).
-- [ ] **Global Tokens**: Define a set of "Common Platform Tokens" (Spanish and English) available to all apps.
-- [ ] **App Bundles**: Implement a lazy-loading strategy for app-specific translation bundles.
-- [ ] **Language Switcher**: Add a language toggle in the Portal Shell that propagates the change to all active MFEs.
-- [ ] **Pilot**: Migrate the Portal and `aneca-advisor` to use the new i18n service.
+- [x] **Shared Service**: Create an i18n service in the UI library using standard Angular signals.
+- [x] **Global Tokens**: Defined a set of "Common Platform Tokens" (Spanish and English) in `apps/portal/public/i18n/portal/`.
+- [x] **App Bundles**: Implemented a lazy-loading strategy that fetches JSON files on-demand.
+- [x] **Language Switcher**: Added a language toggle in the Portal Shell Header.
+- [x] **Pilot**: Migrated `aneca-advisor` to use the new i18n service.
 
 ## Technical Constraints & References
-- **Performance**: Translation bundles must be lazy-loaded to avoid increasing the initial bundle size.
-- **Fallbacks**: Always provide a default fallback language (e.g., Spanish).
-- **SEO/Accessibility**: Ensure translated text is correctly handled by screen readers and search engines (if applicable).
+- **Performance**: Translation bundles are lazy-loaded via `HttpClient`.
+- **Fallbacks**: Returns the key itself if the translation is missing.
+- **Cross-MFE**: Uses a `PLATFORM_LANGUAGE_CHANGED` CustomEvent for real-time synchronization across all MFEs.
 
 ## Status
-- **Current Status**: `Planned`
+- **Current Status**: `Done`
 - **Priority**: `Medium`
 - **Assignee**: [AI Agent]
+
+## 🗒 Implementation Notes
+- **UI Library**: `libs/apps-platform-ui/src/lib/i18n/` contains the `TranslationService` (signals-based) and `TranslatePipe` (standalone).
+- **MFE Sync**: The `TranslationService` constructor listens for `PLATFORM_LANGUAGE_CHANGED` events and automatically reloads all previously loaded namespaces.
+- **Pilot**: `AnecaAdvisorAppComponent` now uses `TranslatePipe` for core labels and computed signals for dynamic text (like tabs).
 
 ## References
 - [Angular i18n Guide](https://angular.io/guide/i18n-overview)

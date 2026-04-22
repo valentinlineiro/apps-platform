@@ -1,0 +1,13 @@
+{
+  "SHELL": {
+    "APPS": "Aplicaciones",
+    "AUDIT": "Auditoría",
+    "SETTINGS": "Configuración",
+    "PROFILE": "Mi perfil",
+    "LOGOUT": "Cerrar sesión"
+  },
+  "COMMON": {
+    "SAVE": "Guardar",
+    "CANCEL": "Cancelar"
+  }
+}

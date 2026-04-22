@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { UserService } from '../services/user.service';
+import { TranslationService, TranslatePipe } from '@apps-platform/ui';
 
 /**
  * Unified top bar used by every portal page and app shell.
@@ -21,7 +22,7 @@ import { UserService } from '../services/user.service';
 @Component({
   selector: 'app-shell-header',
   standalone: true,
-  imports: [RouterLink],
+  imports: [RouterLink, TranslatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './shell-header.component.html',
   styleUrl: './shell-header.component.css',
@@ -31,11 +32,15 @@ export class ShellHeaderComponent {
   showSettings = input(true);
 
   readonly userService = inject(UserService);
+  readonly translationService = inject(TranslationService);
   readonly menuOpen = signal(false);
   readonly avatarUrl = signal<string | null>(null);
   readonly isAdmin = computed(() => this.userService.isAdminOrOwner());
 
   constructor() {
+    // Initial translations load
+    this.translationService.loadTranslations('portal', this.translationService.currentLanguage());
+
     // Load avatar URL once after auth is known. Non-blocking: failure is silent.
     fetch('/auth/me/profile', { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
@@ -61,6 +66,10 @@ export class ShellHeaderComponent {
   @HostListener('document:click')
   onDocumentClick() {
     this.menuOpen.set(false);
+  }
+
+  setLanguage(lang: string) {
+    this.translationService.setLanguage(lang);
   }
 
   logout() {

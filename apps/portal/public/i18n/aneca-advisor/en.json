@@ -1,0 +1,18 @@
+{
+  "TABS": {
+    "INVESTIGACION": "🔍 Research",
+    "DOCENCIA": "👨‍🏫 Teaching",
+    "TRANSFERENCIA": "🚀 Transfer",
+    "IDONEIDAD": "⚖️ Suitability",
+    "HORIZONTE": "🧭 Horizon"
+  },
+  "CONFIG": {
+    "FIGURA": "Figure",
+    "FIELD": "Field",
+    "SEXENIOS": "Research Six-Year Terms"
+  },
+  "ERRORS": {
+    "ORCID_SYNC": "Error syncing ORCID. Check the ID and try again.",
+    "EVALUATION": "Evaluation error. Try again."
+  }
+}

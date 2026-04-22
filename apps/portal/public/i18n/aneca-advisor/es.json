@@ -1,0 +1,18 @@
+{
+  "TABS": {
+    "INVESTIGACION": "🔍 Investigación",
+    "DOCENCIA": "👨‍🏫 Docencia",
+    "TRANSFERENCIA": "🚀 Transferencia",
+    "IDONEIDAD": "⚖️ Idoneidad",
+    "HORIZONTE": "🧭 Horizonte"
+  },
+  "CONFIG": {
+    "FIGURA": "Figura",
+    "FIELD": "Campo",
+    "SEXENIOS": "Sexenios"
+  },
+  "ERRORS": {
+    "ORCID_SYNC": "Error al sincronizar ORCID. Verifica el ID e inténtalo de nuevo.",
+    "EVALUATION": "Error al evaluar. Inténtalo de nuevo."
+  }
+}

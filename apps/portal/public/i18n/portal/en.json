@@ -1,0 +1,13 @@
+{
+  "SHELL": {
+    "APPS": "Apps",
+    "AUDIT": "Audit",
+    "SETTINGS": "Settings",
+    "PROFILE": "My profile",
+    "LOGOUT": "Log out"
+  },
+  "COMMON": {
+    "SAVE": "Save",
+    "CANCEL": "Cancel"
+  }
+}

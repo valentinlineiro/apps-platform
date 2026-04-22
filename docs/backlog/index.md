@@ -59,7 +59,7 @@ Consult this index to track project progress, identify active implementation tra
 | ID | Enhancement | Status | Priority |
 | :--- | :--- | :--- | :--- |
 | **U-001** | **Dashboard Redesign** | `Draft` | `Low` |
-| **U-002** | [**Centralized Internationalization (i18n) Service**](items/U-002%20-%20Centralized%20Internationalization%20(i18n)%20Service.md) | `Planned` | `Medium` |
+| **U-002** | [**Centralized Internationalization (i18n) Service**](items/U-002%20-%20Centralized%20Internationalization%20(i18n)%20Service.md) | `Done` | `Medium` |
 
 ## References
 - [Backlog Guidelines](GUIDELINES.md)

@@ -15,7 +15,7 @@
         }
       </select>
       <label class="inline-label">
-        <span>Sexenios</span>
+        <span>{{ 'CONFIG.SEXENIOS' | translate }}</span>
         <input type="number" min="0" max="10" [value]="sexenios()"
                (input)="sexenios.set(+$any($event.target).value)" />
       </label>

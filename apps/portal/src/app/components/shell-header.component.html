@@ -3,16 +3,33 @@
     @if (title()) {
       <span class="title">{{ title() }}</span>
     } @else {
-      <a class="back" routerLink="/">← Apps</a>
+      <a class="back" routerLink="/">← {{ 'SHELL.APPS' | translate }}</a>
     }
   </div>
   <nav class="nav">
     @if (isAdmin()) {
-      <a class="nav-link" routerLink="/audit">Auditoría</a>
+      <a class="nav-link" routerLink="/audit">{{ 'SHELL.AUDIT' | translate }}</a>
     }
     @if (showSettings()) {
-      <a class="nav-link" routerLink="/settings">Configuración</a>
+      <a class="nav-link" routerLink="/settings">{{ 'SHELL.SETTINGS' | translate }}</a>
     }
+    <div class="lang-switcher">
+      <button
+        class="lang-btn"
+        [class.active]="translationService.currentLanguage() === 'es'"
+        (click)="setLanguage('es')"
+      >
+        ES
+      </button>
+      <span class="divider">|</span>
+      <button
+        class="lang-btn"
+        [class.active]="translationService.currentLanguage() === 'en'"
+        (click)="setLanguage('en')"
+      >
+        EN
+      </button>
+    </div>
     <div class="avatar-wrap">
       <button
         class="avatar-btn"
@@ -36,10 +53,10 @@
             <div class="dropdown-divider"></div>
           }
           <a class="dropdown-item" routerLink="/profile" (click)="menuOpen.set(false)">
-            Mi perfil
+            {{ 'SHELL.PROFILE' | translate }}
           </a>
           <button class="dropdown-item dropdown-item--danger" type="button" (click)="logout()">
-            Cerrar sesión
+            {{ 'SHELL.LOGOUT' | translate }}
           </button>
         </div>
       }
