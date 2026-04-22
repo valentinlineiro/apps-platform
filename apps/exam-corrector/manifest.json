@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "id": "exam-corrector",
+  "name": "exam-corrector",
+  "description": "Corrección automática de exámenes tipo test con detección óptica de marcas",
+  "route": "exam-corrector",
+  "icon": "📝",
+  "status": "stable",
+  "scriptUrl": "/apps/exam-corrector/element/main.js",
+  "elementTag": "exam-corrector-app",
+  "backend": {"pathPrefix": "/exam-corrector/"},
+  "app_url": "http://exam-corrector-backend:8000"
+}

@@ -47,9 +47,11 @@ if not _session_secret:
 app.secret_key = _session_secret
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-STATIC_APPS_FILE = os.environ.get(
-    "STATIC_APPS_FILE",
-    os.path.join(os.path.dirname(__file__), "static_apps.json"),
+# In Docker the CWD is /app and manifests are copied to /app/apps/<name>/manifest.json.
+# In local dev set APPS_DIR to the monorepo apps/ directory.
+APPS_DIR = os.environ.get(
+    "APPS_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "apps"),
 )
 DEFAULT_TENANT_ID = "default"
 DEFAULT_TENANT_NAME = "Default"
@@ -149,15 +151,24 @@ def _sync_plugin_from_manifest(conn, manifest: dict, now: float) -> None:
     )
 
 
-def _init_static_apps() -> None:
-    if not os.path.exists(STATIC_APPS_FILE):
+def _discover_apps() -> None:
+    """Seed the registry from manifest.json files found in APPS_DIR subdirectories."""
+    import glob as _glob
+    pattern = os.path.join(APPS_DIR, "*", "manifest.json")
+    manifest_files = sorted(_glob.glob(pattern))
+    if not manifest_files:
+        app.logger.warning(f"no app manifests found under {APPS_DIR}")
         return
-    with open(STATIC_APPS_FILE) as f:
-        manifests = json.load(f)
-    app.logger.info(f"loading {len(manifests)} static app(s) from {STATIC_APPS_FILE}")
+    app.logger.info(f"discovered {len(manifest_files)} app manifest(s) under {APPS_DIR}")
     now = time.time()
     with _db() as conn:
-        for manifest in manifests:
+        for path in manifest_files:
+            try:
+                with open(path) as f:
+                    manifest = json.load(f)
+            except Exception:
+                app.logger.warning(f"failed to load manifest {path}", exc_info=True)
+                continue
             app_url = manifest.get("app_url")
             conn.execute(
                 """
@@ -675,7 +686,7 @@ def _bootstrap():
     _ensure_db_exists()
     run_alembic_upgrade(DATABASE_URL, os.path.join(os.path.dirname(__file__), "alembic.ini"), app.logger)
     _init_default_tenant()
-    _init_static_apps()
+    _discover_apps()
     # Wire blueprints after DB is ready
     _user_repo = SqlUserRepository(_db)
     _tenant_repo = SqlTenantRepository(_db)

@@ -1,0 +1,13 @@
+{
+  "manifestVersion": 1,
+  "id": "aneca-advisor",
+  "name": "ANECA Advisor",
+  "description": "Simulador de acreditación ANECA para investigadores universitarios",
+  "route": "aneca-advisor",
+  "icon": "🎓",
+  "status": "wip",
+  "scriptUrl": "/apps/aneca-advisor/element/main.js",
+  "elementTag": "aneca-advisor-app",
+  "backend": {"pathPrefix": "/api/aneca/"},
+  "app_url": "http://aneca-advisor-backend:5001"
+}

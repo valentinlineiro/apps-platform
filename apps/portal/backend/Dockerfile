@@ -4,7 +4,9 @@ COPY libs/apps-platform-sdk/ /libs/apps-platform-sdk/
 COPY apps/portal/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY apps/portal/backend/app.py .
-COPY apps/portal/backend/static_apps.json .
+COPY apps/exam-corrector/manifest.json apps/exam-corrector/
+COPY apps/aneca-advisor/manifest.json apps/aneca-advisor/
+COPY apps/attendance-checker/manifest.json apps/attendance-checker/
 COPY apps/portal/backend/alembic.ini .
 COPY apps/portal/backend/alembic/ alembic/
 COPY apps/portal/backend/postgres/ postgres/

@@ -26,6 +26,7 @@ Consult this index to track project progress, identify active implementation tra
 | **B-003** | [**Grocery List Optimizer Review**](items/B-003%20-%20Grocery%20List%20Optimizer%20Review.md) | `Draft` | `Low` |
 | **B-004** | [**Platform-wide Search (Cross-App Discovery)**](items/B-004%20-%20Platform-wide%20Search%20(Cross-App%20Discovery).md) | `Draft` | `Medium` |
 | **B-005** | [**Diet and Grocery Optimizer Implementation**](items/B-005%20-%20Diet%20and%20Grocery%20Optimizer%20Implementation.md) | `Planned` | `Medium` |
+| **B-006** | [**Platform Hardening and Developer Experience**](items/B-006%20-%20Platform%20Hardening%20and%20Developer%20Experience.md) | `Planned` | `High` |
 
 ### 🛠 Technical & Infrastructure (Category T)
 | ID | Initiative | Status | Priority |
@@ -33,7 +34,7 @@ Consult this index to track project progress, identify active implementation tra
 | **T-001** | [**Replace Heartbeat Registry With Postgres App Catalog**](items/T-001%20-%20Replace%20Heartbeat%20Registry%20With%20Postgres%20App%20Catalog.md) | `Done` | `High` |
 | **T-002** | [**Platform Stabilization and Technical Debt**](items/T-002%20-%20Platform%20Stabilization%20and%20Technical%20Debt.md) | `Done` | `High` |
 | **T-003** | [**Implement Alembic Schema Migrations**](items/T-003%20-%20Implement%20Alembic%20Schema%20Migrations.md) | `Done` | `High` |
-| **T-004** | [**Distributed Manifest Discovery**](items/T-004%20-%20Distributed%20Manifest%20Discovery.md) | `Planned` | `High` |
+| **T-004** | [**Distributed Manifest Discovery**](items/T-004%20-%20Distributed%20Manifest%20Discovery.md) | `Done` | `High` |
 | **T-005** | [**Portal Backend Hardening**](items/T-005%20-%20Portal%20Backend%20Hardening.md) | `Done` | `High` |
 | **T-006** | [**E2E Tests with Playwright**](items/T-006%20-%20E2E%20Tests%20with%20Playwright.md) | `Done` | `Medium` |
 | **T-007** | [**Move Code Comments to Documentation**](items/T-007%20-%20Move%20Code%20Comments%20to%20Documentation.md) | `Planned` | `Low` |
@@ -49,6 +50,10 @@ Consult this index to track project progress, identify active implementation tra
 | **T-017** | [**Unified API Documentation (OpenAPI Aggregator)**](items/T-017%20-%20Unified%20API%20Documentation%20(OpenAPI%20Aggregator).md) | `Planned` | `Medium` |
 | **T-018** | [**Infrastructure as Code (IaC) and Cloud Readiness**](items/T-018%20-%20Infrastructure%20as%20Code%20(IaC)%20and%20Cloud%20Readiness.md) | `Planned` | `Medium` |
 | **T-019** | [**Secrets Management Strategy**](items/T-019%20-%20Secrets%20Management%20Strategy.md) | `Planned` | `High` |
+| **T-020** | [**Global Design Tokens and Theme Provider**](items/T-020%20-%20Global%20Design%20Tokens%20and%20Theme%20Provider.md) | `Planned` | `Medium` |
+| **T-021** | [**Standardized MFE Event Bus**](items/T-021%20-%20Standardized%20MFE%20Event%20Bus.md) | `Planned` | `Medium` |
+| **T-022** | [**Database Row-Level Security for Tenant Isolation**](items/T-022%20-%20Database%20Row-Level%20Security%20for%20Tenant%20Isolation.md) | `Planned` | `High` |
+| **T-023** | [**Platform Admin Health Dashboard**](items/T-023%20-%20Platform%20Admin%20Health%20Dashboard.md) | `Planned` | `Medium` |
 
 ### 🎨 UX & UI Enhancements (Category U)
 | ID | Enhancement | Status | Priority |
@@ -61,6 +66,8 @@ Consult this index to track project progress, identify active implementation tra
 - [AI-Ready Task Template](templates/AI_TASK_TEMPLATE.md)
 
 ## Change log
+- **2026-04-22**: Added B-006 Epic (Platform Hardening & DX) and T-020, T-021, T-022, T-023.
+- **2026-04-22**: T-004 marked Done (per-app manifest.json; portal discovers via APPS_DIR scan; static_apps.json deleted).
 - **2026-04-22**: T-008 marked Done (SDK database/, flask_app, manifest modules; all 3 backends refactored).
 - **2026-04-22**: Added B-005 (Diet and Grocery Optimizer Implementation).
 - **2026-04-22**: Added B-004, T-016, T-017, T-018, and T-019 (Search, Audit, Docs, IaC, Secrets).

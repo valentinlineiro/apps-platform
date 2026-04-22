@@ -29,10 +29,10 @@ Currently, all apps must be manually added to the `static_apps.json` file in the
 - **SDK**: Provide utilities for apps to serve their own manifest at `/manifest` automatically.
 
 ### ✅ Acceptance Criteria
-- [ ] `static_apps.json` removed from `portal-backend`.
-- [ ] `manifest.json` exists in each app's root directory.
-- [ ] Portal successfully aggregates all local manifests into its internal catalog.
-- [ ] New apps are automatically discovered by the Portal without modifying portal code.
+- [x] `static_apps.json` removed from `portal-backend`.
+- [x] `manifest.json` exists in each app's root directory (`exam-corrector`, `aneca-advisor`, `attendance-checker`).
+- [x] Portal aggregates manifests via `_discover_apps()`, scanning `APPS_DIR/*/manifest.json` at startup.
+- [x] New apps are discovered without modifying portal code — add `manifest.json` to app root + one `COPY` line in the portal Dockerfile.
 
 ### 🛠 Technical Constraints & References
 - **Nx Integration**: Use `nx list` or project tags to identify "discoverable" apps.
@@ -41,7 +41,7 @@ Currently, all apps must be manually added to the `static_apps.json` file in the
 ---
 
 ### 🚦 Status
-- **Current Status**: `Planned`
+- **Current Status**: `Done`
 - **Priority**: `High`
 - **Assignee**: Unassigned
 
@@ -50,5 +50,6 @@ Currently, all apps must be manually added to the `static_apps.json` file in the
 - [Portal Deep Dive](../../apps/portal/index.md)
 
 ## Change log
+- **2026-04-22**: Implemented. manifest.json in each app root; portal uses _discover_apps() scanning APPS_DIR/*/manifest.json; static_apps.json deleted; Dockerfile updated.
 - **2026-04-22**: Elevated to High — prerequisite for T-013 (scaffolding) and removes the static_apps.json bottleneck.
 - **2026-04-21**: Created to improve architectural decoupling and developer ergonomics.
