@@ -7,5 +7,10 @@ setup(
     install_requires=[
         "requests>=2.31.0",
         "flask>=3.0",
+        "flask-cors>=4.0",
     ],
+    extras_require={
+        "postgres": ["psycopg2-binary>=2.9"],
+        "migrations": ["alembic>=1.13"],
+    },
 )

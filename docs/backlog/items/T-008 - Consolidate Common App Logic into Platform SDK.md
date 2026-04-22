@@ -22,12 +22,12 @@ Currently, several applications (e.g., `aneca-advisor`, `exam-corrector`) implem
 - **Impact**: All backend services will have a more streamlined `app.py` and consistent startup behavior.
 
 ## Acceptance Criteria
-- [ ] **Alembic Utility**: Move the `_run_alembic_upgrade` logic to a reusable utility in the SDK (e.g., `apps_platform_sdk.database.migrations`).
-- [ ] **App Factory/Config**: Create a standard Flask app factory or initialization helper in the SDK that sets up CORS, sessions, logging, and error handlers with platform defaults.
-- [ ] **Database Helpers**: Move the `_PgConn` wrapper or similar common DB utilities to the SDK.
-- [ ] **Manifest Standardization**: Define a standard `Manifest` model/schema and a helper to register the `/manifest` endpoint automatically.
-- [ ] **Refactor Apps**: Update existing applications to use these new SDK utilities and remove duplicated code.
-- [ ] **Tests**: Add unit tests in the SDK for all new utilities.
+- [x] **Alembic Utility**: `run_alembic_upgrade(database_url, alembic_ini, logger)` in `apps_platform_sdk.database.migrations`. Lazy-imports alembic; uses `exc_info=True` on failure.
+- [x] **App Factory/Config**: `configure_app(app, *, cors_resources, configure_session)` in `apps_platform_sdk.flask_app`. Wires logging, error handlers, CORS, and session-cookie defaults.
+- [x] **Database Helpers**: `PgConn` and `make_db_factory(database_url)` in `apps_platform_sdk.database.pg_conn`. Lazy-imports psycopg2.
+- [x] **Manifest Standardization**: `create_manifest_blueprint(manifest)` in `apps_platform_sdk.manifest`. Registers `GET /manifest`.
+- [x] **Refactor Apps**: `aneca-advisor`, `exam-corrector`, and `portal` backends updated. Duplicated `_PgConn`, `_run_alembic_upgrade`, and session-cookie setup removed from all three.
+- [x] **Tests**: 17 unit tests added in `libs/apps-platform-sdk/tests/test_sdk.py` covering all new utilities.
 
 ## Technical Constraints & References
 - **Backwards Compatibility**: Ensure the SDK remains compatible with different Flask versions if applicable.
@@ -35,7 +35,7 @@ Currently, several applications (e.g., `aneca-advisor`, `exam-corrector`) implem
 - **Standardized Logging**: All moved logic must use `apps_platform_sdk.observability`.
 
 ## Status
-- **Current Status**: `Planned`
+- **Current Status**: `Done`
 - **Priority**: `High`
 - **Assignee**: [AI Agent]
 
@@ -44,4 +44,5 @@ Currently, several applications (e.g., `aneca-advisor`, `exam-corrector`) implem
 - [Workspace Management](../../how-to/workspace-management.md)
 
 ## Change log
+- **2026-04-22**: Implemented. New SDK modules: `database/` (PgConn, make_db_factory, run_alembic_upgrade), `flask_app.py` (configure_app), `manifest.py` (create_manifest_blueprint). All 3 backends refactored. 17 tests, all green.
 - **2026-04-22**: Initial task creation.

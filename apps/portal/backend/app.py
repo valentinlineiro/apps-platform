@@ -8,14 +8,10 @@ import hashlib
 import urllib.parse
 
 import requests as http_requests
-import alembic.config
-import alembic.command
 from flask import Flask, jsonify, redirect, request, session
-from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from apps_platform_sdk.observability import setup_logging
-from apps_platform_sdk import register_error_handlers, require_session
+from apps_platform_sdk import configure_app, require_session, make_db_factory, run_alembic_upgrade
 from adapters.sql.audit_repo import SqlAuditRepository
 from adapters.sql.plugin_repo import SqlPluginRepository
 from adapters.sql.tenant_repo import SqlTenantRepository
@@ -31,9 +27,7 @@ except ImportError:
     psycopg2 = None  # type: ignore[assignment]
 
 app = Flask(__name__)
-setup_logging(app)
-register_error_handlers(app)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+configure_app(app, cors_resources={r"/api/*": {"origins": "*"}})
 
 # In-memory storage is sufficient for a single-gunicorn-process deployment.
 # Switch to storage_uri="redis://..." for multi-process / multi-host production.
@@ -51,9 +45,6 @@ if not _session_secret:
         sys.exit(1)
     _session_secret = "dev-portal-secret-change-me"
 app.secret_key = _session_secret
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 STATIC_APPS_FILE = os.environ.get(
@@ -77,40 +68,7 @@ OAUTH_LOGOUT_URL = os.environ.get("OAUTH_LOGOUT_URL", "")
 OAUTH_VERIFY_SSL = os.environ.get("OAUTH_VERIFY_SSL", "true").lower() == "true"
 
 
-class _PgConn:
-    """Thin wrapper around a psycopg2 connection that mimics sqlite3's interface:
-    - conn.execute(sql, params) / conn.executemany(sql, seq) return a cursor
-    - 'with _PgConn(...) as conn' commits on success, rolls back on error
-    - Row access by column name via RealDictCursor
-    - SQL placeholders: ? is translated to %s automatically
-    """
-
-    def __init__(self, pg_conn: "psycopg2.connection") -> None:
-        self._conn = pg_conn
-        self._cur = pg_conn.cursor()
-
-    def execute(self, sql: str, params: tuple = ()):
-        self._cur.execute(sql.replace("?", "%s"), params)
-        return self._cur
-
-    def executemany(self, sql: str, seq_of_params):
-        self._cur.executemany(sql.replace("?", "%s"), seq_of_params)
-        return self._cur
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, *_):
-        if exc_type:
-            self._conn.rollback()
-        else:
-            self._conn.commit()
-        self._conn.close()
-
-
-def _db():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
-    return _PgConn(conn)
+_db = make_db_factory(DATABASE_URL)
 
 
 def _ensure_db_exists() -> None:
@@ -133,22 +91,6 @@ def _ensure_db_exists() -> None:
     except Exception as exc:
         # Non-fatal: Alembic will surface a clear error if the DB is still missing
         app.logger.warning("_ensure_db_exists failed", exc_info=True)
-
-
-def _run_alembic_upgrade() -> None:
-    """Run alembic upgrade head to ensure the database schema is up-to-date."""
-    if not DATABASE_URL:
-        app.logger.warning("DATABASE_URL not set, skipping migrations")
-        return
-    app.logger.info("running database migrations (alembic)")
-    try:
-        # Resolve config relative to this file
-        ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
-        cfg = alembic.config.Config(ini_path)
-        alembic.command.upgrade(cfg, "head")
-        app.logger.info("database migrations complete")
-    except Exception as exc:
-        app.logger.error("database migrations failed", exc_info=True)
 
 
 def _init_default_tenant() -> None:
@@ -731,7 +673,7 @@ def auth_me():
 
 def _bootstrap():
     _ensure_db_exists()
-    _run_alembic_upgrade()
+    run_alembic_upgrade(DATABASE_URL, os.path.join(os.path.dirname(__file__), "alembic.ini"), app.logger)
     _init_default_tenant()
     _init_static_apps()
     # Wire blueprints after DB is ready

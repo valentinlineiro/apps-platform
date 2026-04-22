@@ -1,11 +1,8 @@
 import os
-import alembic.config
-import alembic.command
 
 from flask import Flask
 from flask_cors import CORS
-from apps_platform_sdk.observability import setup_logging
-from apps_platform_sdk import register_error_handlers
+from apps_platform_sdk import configure_app, run_alembic_upgrade
 
 import config
 from services import template_service, job_service
@@ -13,30 +10,12 @@ from services.job_store import JobStore
 from services import batch_service
 
 app = Flask(__name__, template_folder=os.path.join(config.BASE_DIR, "templates"))
-setup_logging(app)
-register_error_handlers(app)
-CORS(app, resources={r"/exam-corrector/*": {"origins": config.ALLOWED_ORIGINS}})
+configure_app(app, cors_resources={r"/exam-corrector/*": {"origins": config.ALLOWED_ORIGINS}}, configure_session=False)
 
 os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(config.TEMPLATE_STORE_DIR, exist_ok=True)
 
-
-def _run_alembic_upgrade() -> None:
-    """Run alembic upgrade head to ensure the database schema is up-to-date."""
-    if not config.DATABASE_URL:
-        app.logger.warning("DATABASE_URL not set, skipping migrations")
-        return
-    app.logger.info("running database migrations (alembic)")
-    try:
-        ini_path = os.path.join(os.path.dirname(__file__), "alembic.ini")
-        cfg = alembic.config.Config(ini_path)
-        alembic.command.upgrade(cfg, "head")
-        app.logger.info("database migrations complete")
-    except Exception as exc:
-        app.logger.error(f"database migrations failed: {exc}")
-
-
-_run_alembic_upgrade()
+run_alembic_upgrade(config.DATABASE_URL, os.path.join(os.path.dirname(__file__), "alembic.ini"), app.logger)
 
 store = JobStore(config.DATABASE_URL)
 job_service.init(store)

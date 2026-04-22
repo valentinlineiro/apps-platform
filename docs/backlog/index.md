@@ -37,7 +37,7 @@ Consult this index to track project progress, identify active implementation tra
 | **T-005** | [**Portal Backend Hardening**](items/T-005%20-%20Portal%20Backend%20Hardening.md) | `Done` | `High` |
 | **T-006** | [**E2E Tests with Playwright**](items/T-006%20-%20E2E%20Tests%20with%20Playwright.md) | `Done` | `Medium` |
 | **T-007** | [**Move Code Comments to Documentation**](items/T-007%20-%20Move%20Code%20Comments%20to%20Documentation.md) | `Planned` | `Low` |
-| **T-008** | [**Consolidate Common App Logic into Platform SDK**](items/T-008%20-%20Consolidate%20Common%20App%20Logic%20into%20Platform%20SDK.md) | `Planned` | `High` |
+| **T-008** | [**Consolidate Common App Logic into Platform SDK**](items/T-008%20-%20Consolidate%20Common%20App%20Logic%20into%20Platform%20SDK.md) | `Done` | `High` |
 | **T-009** | [**Standardize Clean Architecture Patterns in SDK**](items/T-009%20-%20Standardize%20Clean%20Architecture%20Patterns%20in%20SDK.md) | `Planned` | `Medium` |
 | **T-010** | [**Implement Frontend Clean Architecture in UI Library**](items/T-010%20-%20Implement%20Frontend%20Clean%20Architecture%20in%20UI%20Library.md) | `Planned` | `Medium` |
 | **T-011** | [**Centralized Observability and Distributed Tracing**](items/T-011%20-%20Centralized%20Observability%20and%20Distributed%20Tracing.md) | `Planned` | `High` |
@@ -61,6 +61,7 @@ Consult this index to track project progress, identify active implementation tra
 - [AI-Ready Task Template](templates/AI_TASK_TEMPLATE.md)
 
 ## Change log
+- **2026-04-22**: T-008 marked Done (SDK database/, flask_app, manifest modules; all 3 backends refactored).
 - **2026-04-22**: Added B-005 (Diet and Grocery Optimizer Implementation).
 - **2026-04-22**: Added B-004, T-016, T-017, T-018, and T-019 (Search, Audit, Docs, IaC, Secrets).
 - **2026-04-22**: Added U-002, T-014, and T-015 (i18n, Event-Driven, Prefetching).
