@@ -14,4 +14,8 @@ COPY apps/portal/backend/application/ application/
 COPY apps/portal/backend/ports/ ports/
 COPY apps/portal/backend/adapters/ adapters/
 EXPOSE 5000
-CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "--preload"]
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"
+# Single worker keeps in-memory rate-limit counters consistent across requests.
+# Scale to multiple workers only after switching flask-limiter to a Redis backend.
+CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "120", "--preload"]

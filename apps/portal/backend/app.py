@@ -12,6 +12,8 @@ import alembic.config
 import alembic.command
 from flask import Flask, jsonify, redirect, request, session
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from apps_platform_sdk.observability import setup_logging
 from apps_platform_sdk import register_error_handlers, require_session
 from adapters.sql.audit_repo import SqlAuditRepository
@@ -32,6 +34,15 @@ app = Flask(__name__)
 setup_logging(app)
 register_error_handlers(app)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+# In-memory storage is sufficient for a single-gunicorn-process deployment.
+# Switch to storage_uri="redis://..." for multi-process / multi-host production.
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[],
+    storage_uri="memory://",
+)
 _session_secret = os.environ.get("PORTAL_SESSION_SECRET", "")
 if not _session_secret:
     import sys
@@ -559,6 +570,7 @@ def health():
 
 
 @app.get("/auth/login")
+@limiter.limit("5 per minute")
 def auth_login():
     if not _oauth_is_configured():
         return jsonify({"error": "oauth_not_configured"}), 500
@@ -585,6 +597,7 @@ def auth_login():
 
 
 @app.get("/auth/callback")
+@limiter.limit("5 per minute")
 def auth_callback():
     if not _oauth_is_configured():
         return jsonify({"error": "oauth_not_configured"}), 500

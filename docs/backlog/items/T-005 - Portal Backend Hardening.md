@@ -2,7 +2,7 @@
 id: T-005
 title: Portal Backend Hardening
 audience: [human, ai]
-last_updated: 2026-04-21
+last_updated: 2026-04-22
 tags: [backlog, backend, security, observability, performance, technical]
 source_of_truth: true
 related: [T-002, T-003]
@@ -35,24 +35,30 @@ The backend has clean architecture (domain/ports/adapters) and sound business lo
   `install()` raises `NameError` at runtime whenever a plugin is installed via the API.  
   *Fixed in commit that created this backlog item.*
 
-- [ ] **`/health` endpoint** — returns `{"status": "ok"}` with a lightweight DB ping.  
+- [x] **`/health` endpoint** — returns `{"status": "ok"}` with a lightweight DB ping.  
   Required for Docker `HEALTHCHECK`, Caddy upstream probing, and nginx `upstream` resolution (nginx currently exits if portal-backend isn't up at start time).
+  *Added to `app.py`, nginx proxies `GET /health`, `HEALTHCHECK` in `Dockerfile` and `docker-compose.yml`.*
 
-- [ ] **Database indexes** — add a migration with indexes on the hot-path columns:
+- [x] **Database indexes** — add a migration with indexes on the hot-path columns:
   - `plugin_installs(tenant_id, status)`
   - `tenant_memberships(user_id)`
   - `audit_logs(user_id, created_at)`
   - `users(email)` — used by `find_user_by_email`
+  *Migration `c4d5e6f7a8b9_add_hot_path_indexes.py` applied.*
 
 #### 🟠 High — fix before soft launch
 
-- [ ] **Rate limiting on auth endpoints** — add Flask-Limiter (or nginx `limit_req`) for `/auth/login` and `/auth/callback` (5 req/min per IP). Without this, the IDP token exchange becomes a free amplification target.
+- [x] **Rate limiting on auth endpoints** — add Flask-Limiter (or nginx `limit_req`) for `/auth/login` and `/auth/callback` (5 req/min per IP). Without this, the IDP token exchange becomes a free amplification target.
+  *Flask-Limiter 3.8 added; `@limiter.limit("5 per minute")` on `/auth/login` and `/auth/callback`. In-memory storage with 1 gunicorn worker. Switch to Redis + multiple workers for production scale.*
 
-- [ ] **Enforce session secret** — `app.secret_key` falls back to `"dev-portal-secret-change-me"` (`app.py:35`). Make the app fail hard at startup if `PORTAL_SESSION_SECRET` is not set in production.
+- [x] **Enforce session secret** — `app.secret_key` falls back to `"dev-portal-secret-change-me"` (`app.py:35`). Make the app fail hard at startup if `PORTAL_SESSION_SECRET` is not set in production.
+  *App exits with fatal error at startup if `PORTAL_SESSION_SECRET` is unset and `FLASK_ENV=production` or `ENFORCE_SESSION_SECRET` is set.*
 
-- [ ] **URL validation on `app_url`** in `_validate_manifest()` — reject non-http/https schemes and RFC-1918 addresses to close the SSRF surface in `_available()`.
+- [x] **URL validation on `app_url`** in `_validate_manifest()` — reject non-http/https schemes and RFC-1918 addresses to close the SSRF surface in `_available()`.
+  *`_is_safe_app_url()` added; rejects non-http(s) schemes and RFC-1918/loopback addresses.*
 
-- [ ] **`allowed_apps` enforcement** — `tenants.allowed_apps` is stored but never filtered in `_available()` or the catalog query. A tenant can access any app regardless of this setting.
+- [x] **`allowed_apps` enforcement** — `tenants.allowed_apps` is stored but never filtered in `_available()` or the catalog query. A tenant can access any app regardless of this setting.
+  *`_available()` now reads `tenants.allowed_apps` and filters the result set.*
 
 #### 🟡 Medium — next sprint
 
@@ -60,7 +66,8 @@ The backend has clean architecture (domain/ports/adapters) and sound business lo
 
 - [ ] **Remove or implement dead schema** — `user_roles` / `roles` tables and `app_permissions` table are created in the initial migration but never queried. Either implement them or drop them in a migration to reduce confusion.
 
-- [ ] **`_available()` executor cap** — `ThreadPoolExecutor()` with no `max_workers` can spawn up to 36 threads for large installs. Cap at 8 and add a per-app timeout log when `_is_reachable` returns False.
+- [x] **`_available()` executor cap** — `ThreadPoolExecutor()` with no `max_workers` can spawn up to 36 threads for large installs. Cap at 8 and add a per-app timeout log when `_is_reachable` returns False.
+  *`max_workers=8` set; debug log added on unreachable app.*
 
 ### 🛠 Technical Constraints & References
 - Health endpoint must respond before gunicorn workers fork (add to `app.py` as a plain route, not behind `@require_session`).
@@ -80,4 +87,5 @@ The backend has clean architecture (domain/ports/adapters) and sound business lo
 - `apps/portal/backend/adapters/sql/tenant_repo.py`
 
 ## Change log
+- **2026-04-22**: All Critical and most High items done. Rate limiting is the only remaining High item. Medium items carried to next sprint.
 - **2026-04-21**: Created from backend audit. `import time` bug fixed immediately.
