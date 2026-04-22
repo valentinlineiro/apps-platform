@@ -4,6 +4,7 @@ from .auth import require_session
 from .flask_app import configure_app
 from .manifest import create_manifest_blueprint
 from .database import PgConn, make_db_factory, make_tenant_db_factory, run_alembic_upgrade
+from .audit import AuditActions, AuditLogger
 
 __all__ = [
     "RegistrationService",
@@ -18,4 +19,6 @@ __all__ = [
     "make_db_factory",
     "make_tenant_db_factory",
     "run_alembic_upgrade",
+    "AuditActions",
+    "AuditLogger",
 ]

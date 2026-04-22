@@ -155,6 +155,9 @@ class FakeAuditRepository:
     def list_user_entries(self, user_id: str, limit: int) -> list[dict]:
         return [e for e in self.entries if e["user_id"] == user_id][:limit]
 
+    def list_all_entries(self, limit: int, offset: int = 0) -> list[dict]:
+        return self.entries[offset:offset + limit]
+
 
 # ── Tenant settings use-case tests ────────────────────────────────────────────
 
@@ -412,6 +415,37 @@ class GetAuditLogTests(unittest.TestCase):
     def test_respects_limit(self):
         entries = cat_uc.get_audit_log("user1", 1, self.audit)
         self.assertEqual(len(entries), 1)
+
+
+class GetAdminAuditLogTests(unittest.TestCase):
+    def setUp(self):
+        self.repo = FakeTenantRepository()
+        self.audit = FakeAuditRepository()
+        self.audit.log("user1", "login")
+        self.audit.log("user2", "login")
+        self.audit.log("user1", "logout")
+
+    def test_owner_can_list_all_entries(self):
+        entries = cat_uc.get_admin_audit_log("owner1", {}, self.audit, self.repo)
+        self.assertEqual(len(entries), 3)
+
+    def test_non_member_raises_forbidden(self):
+        with self.assertRaises(ForbiddenError):
+            cat_uc.get_admin_audit_log("nobody", {}, self.audit, self.repo)
+
+    def test_member_raises_forbidden(self):
+        with self.assertRaises(ForbiddenError):
+            cat_uc.get_admin_audit_log("member1", {}, self.audit, self.repo)
+
+    def test_respects_limit_and_offset(self):
+        entries = cat_uc.get_admin_audit_log("owner1", {"limit": "2", "offset": "1"}, self.audit, self.repo)
+        self.assertEqual(len(entries), 2)
+
+    def test_clamps_limit_to_200(self):
+        for i in range(300):
+            self.audit.log(f"u{i}", "login")
+        entries = cat_uc.get_admin_audit_log("owner1", {"limit": "999"}, self.audit, self.repo)
+        self.assertLessEqual(len(entries), 200)
 
 
 if __name__ == "__main__":

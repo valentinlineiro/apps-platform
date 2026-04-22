@@ -46,13 +46,13 @@ Consult this index to track project progress, identify active implementation tra
 | **T-013** | [**Automated New App Scaffolding**](items/T-013%20-%20Automated%20New%20App%20Scaffolding.md) | `Planned` | `Medium` |
 | **T-014** | [**Schema Registry for Cross-App Communication**](items/T-014%20-%20Schema%20Registry%20for%20Cross-App%20Communication.md) | `Planned` | `Low` |
 | **T-015** | [**Frontend Performance and Asset Prefetching**](items/T-015%20-%20Frontend%20Performance%20and%20Asset%20Prefetching.md) | `Planned` | `Medium` |
-| **T-016** | [**Centralized Audit Logging Specification**](items/T-016%20-%20Centralized%20Audit%20Logging%20Specification.md) | `Planned` | `High` |
+| **T-016** | [**Centralized Audit Logging Specification**](items/T-016%20-%20Centralized%20Audit%20Logging%20Specification.md) | `Done` | `High` |
 | **T-017** | [**Unified API Documentation (OpenAPI Aggregator)**](items/T-017%20-%20Unified%20API%20Documentation%20(OpenAPI%20Aggregator).md) | `Planned` | `Medium` |
 | **T-018** | [**Infrastructure as Code (IaC) and Cloud Readiness**](items/T-018%20-%20Infrastructure%20as%20Code%20(IaC)%20and%20Cloud%20Readiness.md) | `Planned` | `Medium` |
 | **T-019** | [**Secrets Management Strategy**](items/T-019%20-%20Secrets%20Management%20Strategy.md) | `Planned` | `High` |
 | **T-020** | [**Global Design Tokens and Theme Provider**](items/T-020%20-%20Global%20Design%20Tokens%20and%20Theme%20Provider.md) | `Planned` | `Medium` |
 | **T-021** | [**Standardized MFE Event Bus**](items/T-021%20-%20Standardized%20MFE%20Event%20Bus.md) | `Planned` | `Medium` |
-| **T-022** | [**Database Row-Level Security for Tenant Isolation**](items/T-022%20-%20Database%20Row-Level%20Security%20for%20Tenant%20Isolation.md) | `Planned` | `High` |
+| **T-022** | [**Database Row-Level Security for Tenant Isolation**](items/T-022%20-%20Database%20Row-Level%20Security%20for%20Tenant%20Isolation.md) | `Done` | `High` |
 | **T-023** | [**Platform Admin Health Dashboard**](items/T-023%20-%20Platform%20Admin%20Health%20Dashboard.md) | `Planned` | `Medium` |
 
 ### 🎨 UX & UI Enhancements (Category U)

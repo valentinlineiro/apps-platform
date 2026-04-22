@@ -1,0 +1,51 @@
+<app-shell-header [showSettings]="true" />
+<main class="layout">
+  <div class="page-header">
+    <h1 class="page-title">Registro de auditoría</h1>
+    <p class="page-subtitle">Actividad reciente de todos los usuarios de la plataforma</p>
+  </div>
+
+  @if (!isAdmin()) {
+    <div class="banner banner--error">Acceso restringido a administradores.</div>
+  } @else if (loading()) {
+    <p class="muted">Cargando…</p>
+  } @else if (entries().length === 0) {
+    <p class="muted">No hay eventos registrados.</p>
+  } @else {
+    <section class="section">
+      <table class="audit-table">
+        <thead>
+          <tr>
+            <th>Usuario</th>
+            <th>Acción</th>
+            <th>Recurso</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (entry of entries(); track entry.id) {
+            <tr>
+              <td>
+                <span class="user-name">{{ entry.user_name ?? entry.user_id ?? '—' }}</span>
+                @if (entry.user_email) {
+                  <span class="muted user-email">{{ entry.user_email }}</span>
+                }
+              </td>
+              <td><span class="action-badge">{{ entry.action }}</span></td>
+              <td class="muted">
+                {{ entry.resource_type ?? '' }}{{ entry.resource_id ? ' · ' + entry.resource_id : '' }}
+              </td>
+              <td class="muted date">{{ formatDate(entry.created_at) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <div class="load-more">
+        <button class="btn" (click)="loadMore()" [disabled]="loading()">
+          Cargar más
+        </button>
+      </div>
+    </section>
+  }
+</main>

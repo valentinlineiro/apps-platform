@@ -11,7 +11,7 @@ import requests as http_requests
 from flask import Flask, jsonify, redirect, request, session
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from apps_platform_sdk import configure_app, require_session, make_tenant_db_factory, run_alembic_upgrade
+from apps_platform_sdk import configure_app, require_session, make_tenant_db_factory, run_alembic_upgrade, AuditActions
 from adapters.sql.audit_repo import SqlAuditRepository
 from adapters.sql.plugin_repo import SqlPluginRepository
 from adapters.sql.tenant_repo import SqlTenantRepository
@@ -82,6 +82,9 @@ def _current_tenant_id() -> str | None:
 
 
 _db = make_tenant_db_factory(DATABASE_URL, _current_tenant_id)
+
+# Populated by _bootstrap(); safe to call after module load completes.
+_audit_repo: "SqlAuditRepository | None" = None
 
 
 def _ensure_db_exists() -> None:
@@ -323,14 +326,17 @@ def _json_metadata(data: dict | None = None) -> str:
 
 
 def _log_audit(user_id: str | None, action: str, target_type: str | None = None, target_id: str | None = None, metadata: dict | None = None) -> None:
-    with _db() as conn:
-        conn.execute(
-            """
-            INSERT INTO audit_logs (user_id, action, target_type, target_id, metadata_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (user_id, action, target_type, target_id, _json_metadata(metadata), time.time()),
-        )
+    if _audit_repo is not None:
+        _audit_repo.log(user_id, action, target_type, target_id, metadata)
+    else:
+        with _db() as conn:
+            conn.execute(
+                """
+                INSERT INTO audit_logs (user_id, action, target_type, target_id, metadata_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, action, target_type, target_id, _json_metadata(metadata), time.time()),
+            )
 
 
 # ── Audit / Catalog / Tenant settings / Tenant members ───────────────────────
@@ -653,7 +659,7 @@ def auth_callback():
     session["user_id"] = user_id
     tenant = _get_tenant_membership(user_id)
     session["tenant_id"] = tenant["id"] if tenant else None
-    _log_audit(user_id, "login", "auth", OAUTH_PROVIDER, {"email": email})
+    _log_audit(user_id, AuditActions.LOGIN, "auth", OAUTH_PROVIDER, {"email": email})
     return redirect(next_path if isinstance(next_path, str) and next_path.startswith("/") else "/", code=302)
 
 
@@ -668,7 +674,7 @@ def auth_logout():
 
     session.clear()
     if user_id:
-        _log_audit(user_id, "logout", "auth", OAUTH_PROVIDER)
+        _log_audit(user_id, AuditActions.LOGOUT, "auth", OAUTH_PROVIDER)
 
     logout_url = _oauth_logout_url()
     if logout_url:
@@ -696,6 +702,7 @@ def auth_me():
 
 
 def _bootstrap():
+    global _audit_repo
     _ensure_db_exists()
     run_alembic_upgrade(DATABASE_URL, os.path.join(os.path.dirname(__file__), "alembic.ini"), app.logger)
     _init_default_tenant()

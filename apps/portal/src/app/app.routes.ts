@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { AuditPageComponent } from './pages/audit-page.component';
 import { DirectoryPageComponent } from './pages/directory-page.component';
 import { DynamicAppShellComponent } from './pages/dynamic-app-shell.component';
 import { ProfilePageComponent } from './pages/profile-page.component';
@@ -9,6 +10,7 @@ export const STATIC_ROUTES: Routes = [
   { path: '', component: DirectoryPageComponent },
   { path: 'profile', component: ProfilePageComponent },
   { path: 'settings', component: SettingsPageComponent },
+  { path: 'audit', component: AuditPageComponent },
 ];
 
 export function buildDynamicRoutes(apps: AppManifest[]): Routes {

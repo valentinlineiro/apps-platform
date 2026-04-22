@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   HostListener,
+  computed,
   inject,
   input,
   signal,
@@ -32,6 +33,7 @@ export class ShellHeaderComponent {
   readonly userService = inject(UserService);
   readonly menuOpen = signal(false);
   readonly avatarUrl = signal<string | null>(null);
+  readonly isAdmin = computed(() => this.userService.isAdminOrOwner());
 
   constructor() {
     // Load avatar URL once after auth is known. Non-blocking: failure is silent.

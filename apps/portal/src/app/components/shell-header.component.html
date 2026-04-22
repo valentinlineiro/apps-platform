@@ -7,6 +7,9 @@
     }
   </div>
   <nav class="nav">
+    @if (isAdmin()) {
+      <a class="nav-link" routerLink="/audit">Auditoría</a>
+    }
     @if (showSettings()) {
       <a class="nav-link" routerLink="/settings">Configuración</a>
     }

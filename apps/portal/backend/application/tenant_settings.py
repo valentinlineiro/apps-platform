@@ -1,5 +1,6 @@
 from dataclasses import asdict
 
+from apps_platform_sdk import AuditActions
 from domain.errors import ForbiddenError, NotFoundError, ValidationError
 from domain.tenant import ADMIN_ROLES, VALID_ROLES
 from ports.audit_port import AuditPort
@@ -67,7 +68,7 @@ def update_settings(
         raise NotFoundError("tenant_not_found")
 
     if updates:
-        audit.log(user_id, "tenant_settings_updated", "tenant", tenant_id,
+        audit.log(user_id, AuditActions.TENANT_SETTINGS_UPDATED, "tenant", tenant_id,
                   {"fields": list(updates.keys())})
     return asdict(tenant)
 
@@ -103,7 +104,7 @@ def add_member(
         raise NotFoundError("user_not_found")
 
     repo.upsert_member(tenant_id, user_id, member_role)
-    audit.log(caller_id, "tenant_member_added", "tenant", tenant_id,
+    audit.log(caller_id, AuditActions.TENANT_MEMBER_ADDED, "tenant", tenant_id,
               {"email": email, "role": member_role})
 
 
@@ -121,5 +122,5 @@ def remove_member(
         raise ValidationError("cannot remove yourself")
 
     repo.remove_member(tenant_id, target_user_id)
-    audit.log(caller_id, "tenant_member_removed", "tenant", tenant_id,
+    audit.log(caller_id, AuditActions.TENANT_MEMBER_REMOVED, "tenant", tenant_id,
               {"user_id": target_user_id})

@@ -3,6 +3,7 @@ import pytest
 import apps_platform_sdk
 from apps_platform_sdk.database.pg_conn import PgConn, make_db_factory, make_tenant_db_factory
 from apps_platform_sdk.database.migrations import run_alembic_upgrade
+from apps_platform_sdk.audit import AuditActions, AuditLogger
 from apps_platform_sdk.manifest import create_manifest_blueprint
 from apps_platform_sdk.flask_app import configure_app
 
@@ -225,3 +226,64 @@ def test_configure_app_skips_session_when_disabled():
     configure_app(flask_app, configure_session=False)
     # Flask's default for SAMESITE is None; configure_app sets it to "Lax" only when configure_session=True
     assert flask_app.config.get("SESSION_COOKIE_SAMESITE") != "Lax"
+
+
+# ── AuditActions ─────────────────────────────────────────────────────────────
+
+def test_audit_actions_constants_are_strings():
+    assert AuditActions.LOGIN == "login"
+    assert AuditActions.LOGOUT == "logout"
+    assert AuditActions.TENANT_SETTINGS_UPDATED == "tenant_settings_updated"
+    assert AuditActions.TENANT_MEMBER_ADDED == "tenant_member_added"
+    assert AuditActions.TENANT_MEMBER_REMOVED == "tenant_member_removed"
+    assert AuditActions.PLUGIN_INSTALLED == "plugin_installed"
+    assert AuditActions.PLUGIN_UNINSTALLED == "plugin_uninstalled"
+    assert AuditActions.PLUGIN_STATUS_UPDATED == "plugin_install_updated"
+
+
+def test_audit_actions_exported_from_sdk():
+    from apps_platform_sdk import AuditActions as exported
+    assert exported is AuditActions
+
+
+# ── AuditLogger ───────────────────────────────────────────────────────────────
+
+def _make_audit_logger():
+    rows = []
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn.cursor.return_value = mock_cur
+    mock_conn.__enter__ = lambda s: PgConn(mock_conn)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    pc = PgConn(mock_conn)
+
+    def fake_factory():
+        return pc
+
+    return AuditLogger(fake_factory), mock_cur
+
+
+def test_audit_logger_log_writes_insert():
+    logger, mock_cur = _make_audit_logger()
+    logger.log("u1", AuditActions.LOGIN, "auth", "oidc", {"email": "a@b.com"})
+    call_args = mock_cur.execute.call_args
+    sql = call_args[0][0]
+    params = call_args[0][1]
+    assert "INSERT INTO audit_logs" in sql
+    assert params[0] == "u1"
+    assert params[1] == "login"
+    assert params[2] == "auth"
+    assert params[3] == "oidc"
+    assert '"email"' in params[4]
+
+
+def test_audit_logger_log_defaults_metadata_to_empty_object():
+    logger, mock_cur = _make_audit_logger()
+    logger.log("u1", AuditActions.LOGOUT)
+    params = mock_cur.execute.call_args[0][1]
+    assert params[4] == "{}"
+
+
+def test_audit_logger_exported_from_sdk():
+    from apps_platform_sdk import AuditLogger as exported
+    assert exported is AuditLogger

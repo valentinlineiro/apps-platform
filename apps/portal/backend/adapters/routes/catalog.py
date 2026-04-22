@@ -24,6 +24,13 @@ def create_catalog_blueprint(plugin_repo, tenant_repo, audit):
             limit = 20
         return jsonify(uc.get_audit_log(session["user_id"], limit, audit))
 
+    @bp.get("/api/admin/audit")
+    def get_admin_audit_log():
+        try:
+            return jsonify(uc.get_admin_audit_log(session["user_id"], request.args, audit, tenant_repo))
+        except ForbiddenError:
+            return jsonify({"error": "forbidden"}), 403
+
     @bp.get("/api/tenants/<tenant_id>/installs")
     def list_installs(tenant_id: str):
         try:

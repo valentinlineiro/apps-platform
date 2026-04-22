@@ -1,5 +1,6 @@
 from dataclasses import asdict
 
+from apps_platform_sdk import AuditActions
 from domain.errors import ForbiddenError, NotFoundError, ValidationError
 from domain.plugin import VALID_INSTALL_STATUSES
 from domain.tenant import ADMIN_ROLES
@@ -40,7 +41,7 @@ def install_plugin(
         raise NotFoundError("plugin_not_found")
 
     plugin_repo.install(tenant_id, plugin_id, installed_by=caller_id)
-    audit.log(caller_id, "plugin_installed", "plugin_install", plugin_id,
+    audit.log(caller_id, AuditActions.PLUGIN_INSTALLED, "plugin_install", plugin_id,
               {"tenant_id": tenant_id})
 
 
@@ -67,7 +68,7 @@ def update_install_status(
     if not updated:
         raise NotFoundError("install_not_found")
 
-    audit.log(caller_id, "plugin_install_updated", "plugin_install", plugin_id,
+    audit.log(caller_id, AuditActions.PLUGIN_STATUS_UPDATED, "plugin_install", plugin_id,
               {"tenant_id": tenant_id, "status": new_status})
 
 
@@ -84,7 +85,7 @@ def uninstall_plugin(
         raise ForbiddenError("forbidden")
 
     plugin_repo.uninstall(tenant_id, plugin_id)
-    audit.log(caller_id, "plugin_uninstalled", "plugin_install", plugin_id,
+    audit.log(caller_id, AuditActions.PLUGIN_UNINSTALLED, "plugin_install", plugin_id,
               {"tenant_id": tenant_id})
 
 
@@ -101,3 +102,20 @@ def get_catalog(
 
 def get_audit_log(user_id: str, limit: int, audit: AuditPort) -> list[dict]:
     return audit.list_user_entries(user_id, limit)
+
+
+def get_admin_audit_log(
+    caller_id: str,
+    params: dict,
+    audit: AuditPort,
+    tenant_repo: TenantRepository,
+) -> list[dict]:
+    membership = tenant_repo.get_membership_with_tenant(caller_id)
+    if not membership or membership["role"] not in ADMIN_ROLES:
+        raise ForbiddenError("forbidden")
+    try:
+        limit = min(int(params.get("limit", 50)), 200)
+        offset = max(int(params.get("offset", 0)), 0)
+    except (TypeError, ValueError):
+        limit, offset = 50, 0
+    return audit.list_all_entries(limit, offset)
