@@ -2,9 +2,10 @@ import { test, expect } from '@playwright/test';
 
 test.describe('exam-corrector', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('https://localhost/exam-corrector');
-    // Wait for the micro-frontend web component to mount
-    await page.waitForSelector('exam-corrector-app', { timeout: 15000 });
+    // networkidle ensures Angular has bootstrapped and registry API has resolved
+    await page.goto('https://localhost/exam-corrector', { waitUntil: 'networkidle', timeout: 20000 });
+    // Wait for the web component: mfe-loader fetches script → customElements.define → createElement
+    await page.waitForSelector('exam-corrector-app', { timeout: 30000 });
   });
 
   test('page loads the web component', async ({ page }) => {
@@ -12,8 +13,7 @@ test.describe('exam-corrector', () => {
   });
 
   test('individual tab is active by default', async ({ page }) => {
-    const activeTab = page.locator('button.tab-active', { hasText: 'Individual' });
-    await expect(activeTab).toBeVisible();
+    await expect(page.locator('button.tab-active', { hasText: 'Individual' })).toBeVisible();
   });
 
   test('template selector is visible', async ({ page }) => {

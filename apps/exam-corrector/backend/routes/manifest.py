@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, send_from_directory
 
 bp = Blueprint("manifest", __name__)
 
-ELEMENT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "static", "element")
+ELEMENT_DIR = os.path.join(os.path.dirname(__file__), "..", "static", "element")
 
 
 _MANIFEST = {
