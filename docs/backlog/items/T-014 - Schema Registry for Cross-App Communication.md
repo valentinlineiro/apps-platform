@@ -36,7 +36,7 @@ Currently, when one app needs data or a reaction from another, it typically reli
 
 ## Status
 - **Current Status**: `Planned`
-- **Priority**: `Medium`
+- **Priority**: `Low`
 - **Assignee**: [AI Agent]
 
 ## References
@@ -44,4 +44,5 @@ Currently, when one app needs data or a reaction from another, it typically reli
 - [Centralized Observability (T-011)](T-011%20-%20Centralized%20Observability%20and%20Distributed%20Tracing.md)
 
 ## Change log
+- **2026-04-22**: Downgraded to Low — premature until T-008 (SDK) and T-011 (observability) are complete.
 - **2026-04-22**: Initial task creation.

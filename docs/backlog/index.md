@@ -33,7 +33,7 @@ Consult this index to track project progress, identify active implementation tra
 | **T-002** | [**Platform Stabilization and Technical Debt**](items/T-002%20-%20Platform%20Stabilization%20and%20Technical%20Debt.md) | `Done` | `High` |
 | **T-003** | [**Implement Alembic Schema Migrations**](items/T-003%20-%20Implement%20Alembic%20Schema%20Migrations.md) | `Done` | `High` |
 | **T-004** | [**Distributed Manifest Discovery**](items/T-004%20-%20Distributed%20Manifest%20Discovery.md) | `Planned` | `Medium` |
-| **T-005** | [**Portal Backend Hardening**](items/T-005%20-%20Portal%20Backend%20Hardening.md) | `Active` | `High` |
+| **T-005** | [**Portal Backend Hardening**](items/T-005%20-%20Portal%20Backend%20Hardening.md) | `Done` | `High` |
 | **T-006** | [**E2E Tests with Playwright**](items/T-006%20-%20E2E%20Tests%20with%20Playwright.md) | `Done` | `Medium` |
 | **T-007** | [**Move Code Comments to Documentation**](items/T-007%20-%20Move%20Code%20Comments%20to%20Documentation.md) | `Planned` | `Medium` |
 | **T-008** | [**Consolidate Common App Logic into Platform SDK**](items/T-008%20-%20Consolidate%20Common%20App%20Logic%20into%20Platform%20SDK.md) | `Planned` | `High` |
@@ -60,6 +60,7 @@ Consult this index to track project progress, identify active implementation tra
 - [AI-Ready Task Template](templates/AI_TASK_TEMPLATE.md)
 
 ## Change log
+- **2026-04-22**: T-005 marked Done (structured logging + dead schema migration complete).
 - **2026-04-22**: Added B-004, T-016, T-017, T-018, and T-019 (Search, Audit, Docs, IaC, Secrets).
 - **2026-04-22**: Added U-002, T-014, and T-015 (i18n, Event-Driven, Prefetching).
 - **2026-04-22**: Added T-011, T-012, and T-013 (Observability, RBAC, Scaffolding).

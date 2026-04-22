@@ -42,7 +42,7 @@ Currently, all apps must be manually added to the `static_apps.json` file in the
 
 ### 🚦 Status
 - **Current Status**: `Planned`
-- **Priority**: `Medium`
+- **Priority**: `High`
 - **Assignee**: Unassigned
 
 ## References
@@ -50,4 +50,5 @@ Currently, all apps must be manually added to the `static_apps.json` file in the
 - [Portal Deep Dive](../../apps/portal/index.md)
 
 ## Change log
+- **2026-04-22**: Elevated to High — prerequisite for T-013 (scaffolding) and removes the static_apps.json bottleneck.
 - **2026-04-21**: Created to improve architectural decoupling and developer ergonomics.

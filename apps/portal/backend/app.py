@@ -132,7 +132,7 @@ def _ensure_db_exists() -> None:
         conn.close()
     except Exception as exc:
         # Non-fatal: Alembic will surface a clear error if the DB is still missing
-        app.logger.warning(f"_ensure_db_exists: {exc}")
+        app.logger.warning("_ensure_db_exists failed", exc_info=True)
 
 
 def _run_alembic_upgrade() -> None:
@@ -148,7 +148,7 @@ def _run_alembic_upgrade() -> None:
         alembic.command.upgrade(cfg, "head")
         app.logger.info("database migrations complete")
     except Exception as exc:
-        app.logger.error(f"database migrations failed: {exc}")
+        app.logger.error("database migrations failed", exc_info=True)
 
 
 def _init_default_tenant() -> None:
@@ -636,11 +636,14 @@ def auth_callback():
             timeout=10,
             verify=OAUTH_VERIFY_SSL,
         )
-    except http_requests.exceptions.RequestException as exc:
-        app.logger.error(f"token exchange network error: {exc}")
+    except http_requests.exceptions.RequestException:
+        app.logger.error("token exchange network error", exc_info=True)
         return jsonify({"error": "idp_unreachable"}), 502
     if not token_response.ok:
-        app.logger.error(f"token exchange failed: {token_response.status_code} {token_response.text[:200]}")
+        app.logger.error(
+            "token exchange failed",
+            extra={"extra_info": {"status": token_response.status_code, "body": token_response.text[:200]}},
+        )
         return jsonify({"error": "token_exchange_failed"}), 502
     token_payload = token_response.json()
     access_token = token_payload.get("access_token")
@@ -656,11 +659,14 @@ def auth_callback():
             timeout=10,
             verify=OAUTH_VERIFY_SSL,
         )
-    except http_requests.exceptions.RequestException as exc:
-        app.logger.error(f"userinfo network error: {exc}")
+    except http_requests.exceptions.RequestException:
+        app.logger.error("userinfo network error", exc_info=True)
         return jsonify({"error": "idp_unreachable"}), 502
     if not userinfo_response.ok:
-        app.logger.error(f"userinfo fetch failed: {userinfo_response.status_code}")
+        app.logger.error(
+            "userinfo fetch failed",
+            extra={"extra_info": {"status": userinfo_response.status_code}},
+        )
         return jsonify({"error": "userinfo_fetch_failed"}), 502
     userinfo = userinfo_response.json()
 
@@ -668,7 +674,10 @@ def auth_callback():
     email = userinfo.get("email")
     name = userinfo.get("name") or email or str(provider_sub or "")
     if not provider_sub or not email:
-        app.logger.error(f"invalid userinfo response: sub={provider_sub!r} email={email!r}")
+        app.logger.error(
+            "invalid userinfo response: missing sub or email",
+            extra={"extra_info": {"sub_present": bool(provider_sub), "email_present": bool(email)}},
+        )
         return jsonify({"error": "invalid_userinfo"}), 502
 
     user_id = _upsert_user(email=email, name=name, provider=OAUTH_PROVIDER, provider_sub=provider_sub)

@@ -36,7 +36,7 @@ Large block comments often clutter source files, making it difficult to read the
 
 ## Status
 - **Current Status**: `Planned`
-- **Priority**: `Medium`
+- **Priority**: `Low`
 - **Assignee**: [AI Agent]
 
 ## References
@@ -44,4 +44,5 @@ Large block comments often clutter source files, making it difficult to read the
 - [Coding Standards](../../how-to/coding-standards.md)
 
 ## Change log
+- **2026-04-22**: Downgraded to Low — zero user impact, to be done opportunistically alongside other work.
 - **2026-04-22**: Initial task creation.

@@ -105,6 +105,7 @@ class JsonFormatter(logging.Formatter):
                     "remote_addr": request.remote_addr,
                     "request_id": getattr(g, "request_id", None),
                     "user_id": session.get("user_id") if "user_id" in session else None,
+                    "tenant_id": getattr(g, "tenant_id", None),
                 })
                 if hasattr(g, "start_time"):
                     log_record["duration_ms"] = int((time.time() - g.start_time) * 1000)

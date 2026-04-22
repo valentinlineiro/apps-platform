@@ -62,9 +62,9 @@ The backend has clean architecture (domain/ports/adapters) and sound business lo
 
 #### 🟡 Medium — next sprint
 
-- [ ] **Structured logging** — replace bare `app.logger.warning()` calls with JSON-structured log entries including `request_id`, `user_id`, `tenant_id`, and exception tracebacks. The SDK's `setup_logging()` sets up the handler but the call sites still pass unstructured strings.
+- [x] **Structured logging** — replaced bare `app.logger.warning()` calls with `exc_info=True` on all exception-catching sites; non-exception errors now use `extra={"extra_info": {...}}` for structured context. `JsonFormatter` updated to include `tenant_id` from `g.tenant_id`.
 
-- [ ] **Remove or implement dead schema** — `user_roles` / `roles` tables and `app_permissions` table are created in the initial migration but never queried. Either implement them or drop them in a migration to reduce confusion.
+- [x] **Remove dead schema** — `apps` and `app_permissions` tables dropped in migration `d5e6f7a8b9c0`. Note: `user_roles` / `roles` ARE in use by `_upsert_user` and `_get_user_roles` — they were not dead.
 
 - [x] **`_available()` executor cap** — `ThreadPoolExecutor()` with no `max_workers` can spawn up to 36 threads for large installs. Cap at 8 and add a per-app timeout log when `_is_reachable` returns False.
   *`max_workers=8` set; debug log added on unreachable app.*
@@ -77,7 +77,7 @@ The backend has clean architecture (domain/ports/adapters) and sound business lo
 ---
 
 ### 🚦 Status
-- **Current Status**: `Active`
+- **Current Status**: `Done`
 - **Priority**: `High`
 - **Assignee**: —
 
@@ -87,5 +87,6 @@ The backend has clean architecture (domain/ports/adapters) and sound business lo
 - `apps/portal/backend/adapters/sql/tenant_repo.py`
 
 ## Change log
+- **2026-04-22**: All items complete. Structured logging: `exc_info=True` + `extra_info` dicts throughout; `JsonFormatter` now emits `tenant_id`. Dead schema: migration `d5e6f7a8b9c0` drops `apps` and `app_permissions`; `roles`/`user_roles` confirmed in use.
 - **2026-04-22**: All Critical and most High items done. Rate limiting is the only remaining High item. Medium items carried to next sprint.
 - **2026-04-21**: Created from backend audit. `import time` bug fixed immediately.
