@@ -32,7 +32,14 @@ app = Flask(__name__)
 setup_logging(app)
 register_error_handlers(app)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
-app.secret_key = os.environ.get("PORTAL_SESSION_SECRET", "dev-portal-secret-change-me")
+_session_secret = os.environ.get("PORTAL_SESSION_SECRET", "")
+if not _session_secret:
+    import sys
+    if os.environ.get("FLASK_ENV") == "production" or os.environ.get("ENFORCE_SESSION_SECRET"):
+        print("FATAL: PORTAL_SESSION_SECRET must be set in production", file=sys.stderr)
+        sys.exit(1)
+    _session_secret = "dev-portal-secret-change-me"
+app.secret_key = _session_secret
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SESSION_COOKIE_SECURE", "false").lower() == "true"
@@ -215,7 +222,7 @@ def _init_static_apps() -> None:
 
 
 def _available(tenant_id: str) -> list[dict]:
-    """Return installed apps for tenant that are currently reachable.
+    """Return installed apps for tenant that are currently reachable and permitted.
 
     Apps without app_url (frontend-only) are always considered available.
     Apps with app_url are checked via GET {app_url}/manifest with a short timeout.
@@ -230,6 +237,16 @@ def _available(tenant_id: str) -> list[dict]:
             """,
             (tenant_id,),
         ).fetchall()
+        tenant_row = conn.execute(
+            "SELECT allowed_apps FROM tenants WHERE id = ?", (tenant_id,)
+        ).fetchone()
+
+    allowed_apps_list: list[str] | None = None
+    if tenant_row and tenant_row["allowed_apps"]:
+        try:
+            allowed_apps_list = json.loads(tenant_row["allowed_apps"])
+        except (ValueError, TypeError):
+            pass
 
     def _is_reachable(app_url: str | None) -> bool:
         if not app_url:
@@ -238,15 +255,59 @@ def _available(tenant_id: str) -> list[dict]:
             resp = http_requests.get(f"{app_url}/manifest", timeout=1.5)
             return resp.status_code == 200
         except Exception:
+            app.logger.debug(f"_available: {app_url} unreachable")
             return False
 
     available_apps: list[dict] = []
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         futures = {executor.submit(_is_reachable, row["app_url"]): row for row in rows}
         for future, row in futures.items():
-            if future.result():
-                available_apps.append(json.loads(row["manifest_json"]))
+            if not future.result():
+                continue
+            manifest = json.loads(row["manifest_json"])
+            if allowed_apps_list is not None and manifest.get("id") not in allowed_apps_list:
+                continue
+            available_apps.append(manifest)
     return available_apps
+
+
+_RFC1918 = (
+    ("10.", 8),
+    ("172.16.", 12),
+    ("172.17.", 12),
+    ("172.18.", 12),
+    ("172.19.", 12),
+    ("172.20.", 12),
+    ("172.21.", 12),
+    ("172.22.", 12),
+    ("172.23.", 12),
+    ("172.24.", 12),
+    ("172.25.", 12),
+    ("172.26.", 12),
+    ("172.27.", 12),
+    ("172.28.", 12),
+    ("172.29.", 12),
+    ("172.30.", 12),
+    ("172.31.", 12),
+    ("192.168.", 16),
+    ("127.", 8),
+    ("169.254.", 16),
+)
+
+
+def _is_safe_app_url(url: str) -> bool:
+    """Return False for non-http(s) schemes or RFC-1918/loopback addresses."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = parsed.hostname or ""
+    for prefix, _ in _RFC1918:
+        if host.startswith(prefix):
+            return False
+    return True
 
 
 def _is_non_empty_string(value: object) -> bool:
@@ -450,6 +511,13 @@ def _validate_manifest(data: object) -> tuple[dict, dict[str, str], int | None]:
         if not isinstance(permissions, list) or not all(_is_non_empty_string(p) for p in permissions):
             field_errors["permissions"] = "must be an array of non-empty strings"
 
+    app_url = manifest.get("app_url")
+    if app_url is not None:
+        if not _is_non_empty_string(app_url):
+            field_errors["app_url"] = "must be a non-empty string"
+        elif not _is_safe_app_url(app_url):
+            field_errors["app_url"] = "must be an http/https URL with a public host"
+
     publisher = manifest.get("publisher")
     if publisher is not None:
         if not isinstance(publisher, dict):
@@ -478,6 +546,16 @@ def get_registry():
 # Routes live in adapters/routes/profile.py; blueprint registered below.
 
 
+
+
+@app.get("/health")
+def health():
+    try:
+        with _db() as conn:
+            conn.execute("SELECT 1")
+        return jsonify({"status": "ok"})
+    except Exception:
+        return jsonify({"status": "error"}), 503
 
 
 @app.get("/auth/login")

@@ -34,6 +34,12 @@ services:
       - OAUTH_TOKEN_URL=${OAUTH_TOKEN_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/token}
       - OAUTH_USERINFO_URL=${OAUTH_USERINFO_URL:-http://keycloak:8080/realms/apps-platform/protocol/openid-connect/userinfo}
       - DATABASE_URL=postgresql://${POSTGRES_USER:-keycloak}:${POSTGRES_PASSWORD:-keycloak}@postgres:5432/portal
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   exam-corrector-backend:

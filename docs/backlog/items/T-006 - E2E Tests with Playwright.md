@@ -2,7 +2,7 @@
 id: T-006
 title: E2E Tests with Playwright
 audience: [human, ai]
-last_updated: 2026-04-21
+last_updated: 2026-04-22
 tags: [backlog, testing, e2e, playwright, quality]
 source_of_truth: true
 related: [T-002, T-005]
@@ -30,18 +30,18 @@ Auth and routing bugs between services are invisible to unit tests. Today's issu
 ### ✅ Acceptance Criteria
 
 #### Setup
-- [ ] `@nx/playwright` configured in `apps/portal-e2e/`
-- [ ] `playwright.config.ts` targets `https://localhost`, uses `caddy-root.crt` for TLS, and loads saved auth state
-- [ ] `global-setup.ts` logs in via Keycloak once and saves session to `.auth/user.json`
-- [ ] `.auth/` added to `.gitignore`
-- [ ] `nx e2e portal-e2e` runs all tests against the live stack
+- [x] `@nx/playwright` configured in `apps/portal-e2e/`
+- [x] `playwright.config.ts` targets `https://localhost`, uses `caddy-root.crt` for TLS, and loads saved auth state
+- [x] `global-setup.ts` logs in via Keycloak once and saves session to `.auth/user.json`
+- [x] `.auth/` added to `.gitignore`
+- [x] `nx e2e portal-e2e` runs all tests against the live stack
 
 #### Test coverage
-- [ ] **auth.spec.ts** — unauthenticated `/` redirects to Keycloak; valid login lands on portal directory
-- [ ] **directory.spec.ts** — directory page shows exam-corrector and aneca-advisor cards; disabled apps are hidden
-- [ ] **exam-corrector.spec.ts** — navigate to exam-corrector; page loads the web component; upload form is visible
-- [ ] **aneca-advisor.spec.ts** — navigate to aneca-advisor; fields endpoint loads; submit an evaluation and get a verdict
-- [ ] **profile.spec.ts** — open profile page; change theme preference; reload and verify persisted
+- [x] **auth.spec.ts** — unauthenticated `/` redirects to Keycloak; valid login lands on portal directory
+- [x] **directory.spec.ts** — directory page shows exam-corrector and aneca-advisor cards; disabled apps are hidden
+- [x] **exam-corrector.spec.ts** — navigate to exam-corrector; page loads the web component; upload form is visible
+- [x] **aneca-advisor.spec.ts** — navigate to aneca-advisor; fields endpoint loads; submit an evaluation and get a verdict
+- [x] **profile.spec.ts** — open profile page; change theme preference; reload and verify persisted
 
 #### CI
 - [ ] `e2e` job in CI spins up the stack with `docker compose up -d --wait`, runs `nx e2e portal-e2e`, tears down
@@ -58,7 +58,7 @@ Auth and routing bugs between services are invisible to unit tests. Today's issu
 ---
 
 ### 🚦 Status
-- **Current Status**: `Planned`
+- **Current Status**: `Done`
 - **Priority**: `Medium`
 - **Assignee**: —
 
@@ -69,4 +69,5 @@ Auth and routing bugs between services are invisible to unit tests. Today's issu
 - `apps/portal/backend/static_apps.json` — expected apps in directory
 
 ## Change log
+- **2026-04-22**: All test-coverage and setup criteria done (16/16 passing). CI job remains open.
 - **2026-04-21**: Created. Covers login, directory, exam-corrector, aneca-advisor, profile.
