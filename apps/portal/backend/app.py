@@ -11,7 +11,7 @@ import requests as http_requests
 from flask import Flask, jsonify, redirect, request, session
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-from apps_platform_sdk import configure_app, require_session, make_db_factory, run_alembic_upgrade
+from apps_platform_sdk import configure_app, require_session, make_tenant_db_factory, run_alembic_upgrade
 from adapters.sql.audit_repo import SqlAuditRepository
 from adapters.sql.plugin_repo import SqlPluginRepository
 from adapters.sql.tenant_repo import SqlTenantRepository
@@ -70,7 +70,18 @@ OAUTH_LOGOUT_URL = os.environ.get("OAUTH_LOGOUT_URL", "")
 OAUTH_VERIFY_SSL = os.environ.get("OAUTH_VERIFY_SSL", "true").lower() == "true"
 
 
-_db = make_db_factory(DATABASE_URL)
+def _current_tenant_id() -> str | None:
+    """Return the active tenant for the current request, or None outside a request context."""
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            return session.get("tenant_id")
+    except RuntimeError:
+        pass
+    return None
+
+
+_db = make_tenant_db_factory(DATABASE_URL, _current_tenant_id)
 
 
 def _ensure_db_exists() -> None:
@@ -640,6 +651,8 @@ def auth_callback():
         session["oauth_id_token"] = id_token
     next_path = session.pop("oauth_next", "/")
     session["user_id"] = user_id
+    tenant = _get_tenant_membership(user_id)
+    session["tenant_id"] = tenant["id"] if tenant else None
     _log_audit(user_id, "login", "auth", OAUTH_PROVIDER, {"email": email})
     return redirect(next_path if isinstance(next_path, str) and next_path.startswith("/") else "/", code=302)
 

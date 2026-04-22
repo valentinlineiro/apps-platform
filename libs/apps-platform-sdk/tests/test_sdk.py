@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch, call
 import pytest
 import apps_platform_sdk
-from apps_platform_sdk.database.pg_conn import PgConn, make_db_factory
+from apps_platform_sdk.database.pg_conn import PgConn, make_db_factory, make_tenant_db_factory
 from apps_platform_sdk.database.migrations import run_alembic_upgrade
 from apps_platform_sdk.manifest import create_manifest_blueprint
 from apps_platform_sdk.flask_app import configure_app
@@ -74,6 +74,64 @@ def test_make_db_factory_uses_database_url():
             cursor_factory=psycopg2.extras.RealDictCursor,
         )
     assert isinstance(result, PgConn)
+
+
+def test_pg_conn_set_tenant_with_id():
+    pc, _, mock_cur = _make_pg_conn()
+    pc.set_tenant("acme")
+    mock_cur.execute.assert_called_once_with(
+        "SELECT set_config('app.current_tenant', %s, FALSE)", ("acme",)
+    )
+
+
+def test_pg_conn_set_tenant_with_none_clears():
+    pc, _, mock_cur = _make_pg_conn()
+    pc.set_tenant(None)
+    mock_cur.execute.assert_called_once_with(
+        "SELECT set_config('app.current_tenant', %s, FALSE)", ("",)
+    )
+
+
+def test_pg_conn_set_tenant_with_empty_string_clears():
+    pc, _, mock_cur = _make_pg_conn()
+    pc.set_tenant("")
+    mock_cur.execute.assert_called_once_with(
+        "SELECT set_config('app.current_tenant', %s, FALSE)", ("",)
+    )
+
+
+def test_make_tenant_db_factory_calls_set_tenant():
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn.cursor.return_value = mock_cur
+
+    with patch("psycopg2.connect", return_value=mock_conn):
+        factory = make_tenant_db_factory("postgresql://localhost/db", lambda: "tenant-x")
+        conn = factory()
+
+    assert isinstance(conn, PgConn)
+    mock_cur.execute.assert_called_once_with(
+        "SELECT set_config('app.current_tenant', %s, FALSE)", ("tenant-x",)
+    )
+
+
+def test_make_tenant_db_factory_clears_when_tenant_fn_returns_none():
+    mock_conn = MagicMock()
+    mock_cur = MagicMock()
+    mock_conn.cursor.return_value = mock_cur
+
+    with patch("psycopg2.connect", return_value=mock_conn):
+        factory = make_tenant_db_factory("postgresql://localhost/db", lambda: None)
+        factory()
+
+    mock_cur.execute.assert_called_once_with(
+        "SELECT set_config('app.current_tenant', %s, FALSE)", ("",)
+    )
+
+
+def test_make_tenant_db_factory_exported_from_sdk():
+    from apps_platform_sdk import make_tenant_db_factory as exported
+    assert exported is make_tenant_db_factory
 
 
 # ── run_alembic_upgrade ───────────────────────────────────────────────────────
