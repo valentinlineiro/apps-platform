@@ -24,6 +24,7 @@ Consult this index to track project progress, identify active implementation tra
 | **B-001** | [**Billing Marketplace**](items/B-001%20-%20Billing%20Marketplace.md) | `Active` | `High` |
 | **B-002** | [**User Profile Management**](items/B-002%20-%20User%20Profile%20Management.md) | `Planned` | `Medium` |
 | **B-003** | [**Grocery List Optimizer Review**](items/B-003%20-%20Grocery%20List%20Optimizer%20Review.md) | `Draft` | `Low` |
+| **B-004** | [**Platform-wide Search (Cross-App Discovery)**](items/B-004%20-%20Platform-wide%20Search%20(Cross-App%20Discovery).md) | `Draft` | `Medium` |
 
 ### 🛠 Technical & Infrastructure (Category T)
 | ID | Initiative | Status | Priority |
@@ -43,6 +44,10 @@ Consult this index to track project progress, identify active implementation tra
 | **T-013** | [**Automated New App Scaffolding**](items/T-013%20-%20Automated%20New%20App%20Scaffolding.md) | `Planned` | `Medium` |
 | **T-014** | [**Schema Registry for Cross-App Communication**](items/T-014%20-%20Schema%20Registry%20for%20Cross-App%20Communication.md) | `Planned` | `Medium` |
 | **T-015** | [**Frontend Performance and Asset Prefetching**](items/T-015%20-%20Frontend%20Performance%20and%20Asset%20Prefetching.md) | `Planned` | `Medium` |
+| **T-016** | [**Centralized Audit Logging Specification**](items/T-016%20-%20Centralized%20Audit%20Logging%20Specification.md) | `Planned` | `High` |
+| **T-017** | [**Unified API Documentation (OpenAPI Aggregator)**](items/T-017%20-%20Unified%20API%20Documentation%20(OpenAPI%20Aggregator).md) | `Planned` | `Medium` |
+| **T-018** | [**Infrastructure as Code (IaC) and Cloud Readiness**](items/T-018%20-%20Infrastructure%20as%20Code%20(IaC)%20and%20Cloud%20Readiness.md) | `Planned` | `Medium` |
+| **T-019** | [**Secrets Management Strategy**](items/T-019%20-%20Secrets%20Management%20Strategy.md) | `Planned` | `High` |
 
 ### 🎨 UX & UI Enhancements (Category U)
 | ID | Enhancement | Status | Priority |
@@ -55,6 +60,7 @@ Consult this index to track project progress, identify active implementation tra
 - [AI-Ready Task Template](templates/AI_TASK_TEMPLATE.md)
 
 ## Change log
+- **2026-04-22**: Added B-004, T-016, T-017, T-018, and T-019 (Search, Audit, Docs, IaC, Secrets).
 - **2026-04-22**: Added U-002, T-014, and T-015 (i18n, Event-Driven, Prefetching).
 - **2026-04-22**: Added T-011, T-012, and T-013 (Observability, RBAC, Scaffolding).
 - **2026-04-22**: T-006 marked Done (16/16 e2e tests passing). Removed duplicate section.
